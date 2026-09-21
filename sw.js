@@ -1,1 +1,75 @@
-if(!self.define){let e,i={};const s=(s,n)=>(s=new URL(s+".js",n).href,i[s]||new Promise(i=>{if("document"in self){const e=document.createElement("script");e.src=s,e.onload=i,document.head.appendChild(e)}else e=s,importScripts(s),i()}).then(()=>{let e=i[s];if(!e)throw new Error(`Module ${s} didn’t register its module`);return e}));self.define=(n,r)=>{const o=e||("document"in self?document.currentScript.src:"")||location.href;if(i[o])return;let c={};const t=e=>s(e,o),d={module:{uri:o},exports:c,require:t};i[o]=Promise.all(n.map(e=>d[e]||t(e))).then(e=>(r(...e),c))}}define(["./workbox-dcde9eb3"],function(e){"use strict";self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"silver-logo.svg",revision:"0ce5cbeb31911d003296394c0a6db0ee"},{url:"registerSW.js",revision:"402b66900e731ca748771b6fc5e7a068"},{url:"index.html",revision:"744567f6893bdc097574a2358ebb97b4"},{url:"icon.svg",revision:"d3cfdb754d48608d1f36121dfd0c61ea"},{url:"assets/index-Glot_ggT.css",revision:null},{url:"assets/index-DWISe9Tv.js",revision:"featurefix-20260921-1"},{url:"icon.svg",revision:"d3cfdb754d48608d1f36121dfd0c61ea"},{url:"silver-logo.svg",revision:"0ce5cbeb31911d003296394c0a6db0ee"},{url:"manifest.webmanifest",revision:"62d67609145ba759c677e2ca04c0da4b"}],{}),e.cleanupOutdatedCaches(),e.registerRoute(new e.NavigationRoute(e.createHandlerBoundToURL("index.html"))),e.registerRoute(({request:e})=>"image"===e.destination,new e.CacheFirst({cacheName:"silver-manager-images",plugins:[new e.ExpirationPlugin({maxEntries:100,maxAgeSeconds:2592e3})]}),"GET")});
+const CACHE_NAME = 'silver-manager-app-v3';
+const APP_SHELL = [
+  './',
+  './index.html',
+  './assets/index-DWISe9Tv.js',
+  './assets/index-Glot_ggT.css',
+  './manifest.webmanifest',
+  './registerSW.js',
+  './icon.svg',
+  './silver-logo.svg'
+];
+
+self.addEventListener('install', event => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL))
+  );
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async()=>{
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', event => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (req.mode === 'navigate') {
+    event.respondWith((async()=>{
+      try {
+        const fresh = await fetch(req, { cache: 'no-store' });
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put('./index.html', fresh.clone());
+        return fresh;
+      } catch {
+        return (await caches.match('./index.html')) || (await caches.match('./'));
+      }
+    })());
+    return;
+  }
+
+  if (url.pathname.includes('/assets/') || url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    event.respondWith((async()=>{
+      try {
+        const fresh = await fetch(req, { cache: 'no-store' });
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(req, fresh.clone());
+        return fresh;
+      } catch {
+        return caches.match(req);
+      }
+    })());
+    return;
+  }
+
+  event.respondWith((async()=>{
+    const cached = await caches.match(req);
+    if (cached) return cached;
+    try {
+      const fresh = await fetch(req);
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(req, fresh.clone());
+      return fresh;
+    } catch {
+      return cached;
+    }
+  })());
+});
