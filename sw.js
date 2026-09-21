@@ -1,8 +1,8 @@
-const CACHE_NAME = 'silver-manager-app-v6';
+const CACHE_NAME = 'silver-manager-app-v7';
 const APP_SHELL = [
   './',
   './index.html',
-  './assets/index-expensefix-20260922-3.js',
+  './assets/index-expensefix-20260922-4.js',
   './assets/index-Glot_ggT.css',
   './manifest.webmanifest',
   './registerSW.js',
