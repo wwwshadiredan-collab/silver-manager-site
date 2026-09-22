@@ -1,11 +1,14 @@
 {
-  "name": "Cashier ledger",
-  "short_name": "Cashier ledger",
+  "name": "Cashier Ledger",
+  "short_name": "Cashier Ledger",
+  "description": "دفتر الكاشير - إدارة الديون والدفعات بالدولار والليرة السورية",
   "start_url": "/silver-manager-site/cashier/",
   "scope": "/silver-manager-site/cashier/",
   "display": "standalone",
   "background_color": "#07111f",
   "theme_color": "#08111f",
+  "lang": "ar",
+  "dir": "rtl",
   "icons": [
     {
       "src": "cashier-icon-192.png",
