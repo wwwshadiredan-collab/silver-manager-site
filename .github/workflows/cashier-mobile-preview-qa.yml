@@ -29,8 +29,12 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          curl -fsSL --retry 4 --retry-delay 2 \
+          curl -sSL --retry 3 --retry-delay 2 -D /tmp/preview-headers \
             'https://raw.githack.com/wwwshadiredan-collab/silver-manager-site/cashier-mobile-preview-20260923/cashier/mobile-test.html' -o /tmp/mobile-test.html
-          grep -q 'نسخة' /tmp/mobile-test.html
-          wc -c /tmp/mobile-test.html
-          curl -fsSL 'https://api.github.com/repos/wwwshadiredan-collab/silver-manager-site' | jq '{private,visibility}'
+          echo "PREVIEW HEADERS"; head -n 15 /tmp/preview-headers
+          echo "PREVIEW BODY BYTES"; wc -c /tmp/mobile-test.html
+          echo "PREVIEW FIRST BYTES"; head -c 260 /tmp/mobile-test.html; echo
+          echo "PUBLIC REPO STATUS"
+          curl -sSL -w 'STATUS:%{http_code}\n' 'https://api.github.com/repos/wwwshadiredan-collab/silver-manager-site' -o /tmp/repo-visibility.json
+          jq '{private,visibility,message}' /tmp/repo-visibility.json
+          grep -q 'تجربة موبايل' /tmp/mobile-test.html
