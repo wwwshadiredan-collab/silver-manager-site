@@ -113,3 +113,57 @@ revoke all on function public.ledger_reverse_payment(uuid,uuid,text) from public
 revoke all on function public.ledger_disable_staff(text) from public,anon,authenticated;
 grant execute on function public.ledger_reverse_payment(uuid,uuid,text) to authenticated;
 grant execute on function public.ledger_disable_staff(text) to authenticated;
+
+-- Enrich ONLY the linked customer's statement with the frozen exchange rate and their payment legs.
+create or replace function public.ledger_portal_statement(p_code text) returns jsonb
+language plpgsql security definer set search_path='' as $f$
+declare v_code text; v_link record;
+begin
+ v_code:=upper(trim(coalesce(p_code,'')));
+ if v_code !~ '^LC-[0-9A-F]{32}$' then
+   raise exception 'INVALID_OR_REVOKED_CODE' using errcode='28000';
+ end if;
+ select l.owner_id,l.customer_id,c.name into v_link
+ from public.ledger_portal_codes l
+ join public.customers c on c.id=l.customer_id and c.user_id=l.owner_id
+ where l.code_hash=encode(sha256(convert_to(v_code,'UTF8')),'hex')
+   and l.revoked_at is null and l.expires_at > now()
+ limit 1;
+ if not found then raise exception 'INVALID_OR_REVOKED_CODE' using errcode='28000'; end if;
+ return jsonb_build_object(
+  'customer',jsonb_build_object('name',v_link.name),
+  'balance', (select jsonb_build_object(
+      'USD',coalesce(sum(delta) filter (where currency='USD'),0),
+      'SYP',coalesce(sum(delta) filter (where currency='SYP'),0))
+    from public.journal where owner_id=v_link.owner_id and subject_id=v_link.customer_id),
+  'entries',coalesce((select jsonb_agg(jsonb_build_object(
+      'id',e.id,'date',e.happened_at,'category',e.category,
+      'currency',e.currency,'amount',e.value,'balance_change',e.delta,
+      'note',e.note,'related_id',e.related_id,
+      'payment_details',(select jsonb_build_object(
+         'fx_syp_per_usd',p.fx_syp_per_usd,'usdt_usd_rate',p.usdt_usd_rate,
+         'settled_amount',p.settled_amount,'debt_currency',p.debt_currency,
+         'legs',coalesce((select jsonb_agg(jsonb_build_object(
+                'method',a.channel,'wallet',a.label,
+                'currency',part.currency,'amount',part.amount)
+                order by a.created_at,part.id)
+             from public.ledger_payment_parts part
+             join public.ledger_cash_accounts a on a.id=part.account_id
+                and a.owner_id=p.owner_id
+             where part.payment_id=p.id and part.owner_id=p.owner_id),'[]'::jsonb))
+         from public.ledger_payments p
+         where p.owner_id=v_link.owner_id and p.customer_id=v_link.customer_id
+           and p.journal_id=e.id limit 1)) order by e.happened_at desc,e.id)
+    from (select id,happened_at,category,currency,value,delta,note,related_id
+       from public.journal where owner_id=v_link.owner_id and subject_id=v_link.customer_id
+         and category not like 'expense%'
+       order by happened_at desc,id limit 200) e),'[]'::jsonb),
+  'disputes',coalesce((select jsonb_agg(jsonb_build_object(
+      'id',d.id,'journal_id',d.journal_id,'status',d.status,
+      'reason',d.reason,'response',d.owner_note,'created_at',d.created_at)
+      order by d.created_at desc)
+    from public.ledger_portal_disputes d
+    where d.owner_id=v_link.owner_id and d.customer_id=v_link.customer_id),'[]'::jsonb)
+ );
+end $f$;
+
