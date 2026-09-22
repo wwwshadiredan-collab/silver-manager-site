@@ -63,7 +63,7 @@ async function v2Load(force){
   q('v2AdminSections').classList.toggle('hide',!v2CanManage());
   v2Render();
   v2Warn('البيانات محدّثة. الدفعات الجديدة ما بتنخصم إلا بعد التأكيد اليدوي.',false);
- }catch(e){v2Warn('تعذّر تحميل التحديث الجديد: '+v2Error(e),true)}
+ }catch(e){if(/42501|401|403|not.authorized|permission/i.test(v2Error(e)))v2Clear();v2Warn('تعذّر تحميل التحديث الجديد: '+v2Error(e),true)}
  finally{V2.loading=false}
 }
 function v2Render(){
@@ -80,7 +80,8 @@ function v2Render(){
     (v2CanCash()?'<div class="v2-inline-actions"><button class="btn pri" onclick="v2Confirm(\''+p.id+'\')">تأكيد الاستلام والخصم</button><button class="btn danger" onclick="v2Reject(\''+p.id+'\')">رفض</button></div>':'')+'</div>'
  }).join('')||'<div class="empty">ما في دفعات معلّقة.</div>';
  q('v2History').innerHTML=V2.payments.filter(function(p){return p.state!=='pending'}).slice(0,20).map(function(p){
-  return '<div class="v2-item"><b>'+v2Esc(v2CustomerName(p.customer_id))+'</b> <span class="v2-flag">'+(p.state==='confirmed'?'مؤكد':'مرفوض')+'</span><div>'+v2Fmt(p.settled_amount,p.debt_currency)+'</div><small>'+v2Date(p.confirmed_at||p.created_at)+'</small></div>'
+  return '<div class="v2-item"><b>'+v2Esc(v2CustomerName(p.customer_id))+'</b> <span class="v2-flag">'+(p.state==='confirmed'?'مؤكد':p.state==='reversed'?'معكوس':'مرفوض')+'</span><div>'+v2Fmt(p.settled_amount,p.debt_currency)+'</div><small>'+v2Date(p.confirmed_at||p.created_at)+'</small>'+
+  (p.state==='confirmed'&&v2CanManage()?'<div class="v2-inline-actions"><button class="btn sec" onclick="v2Reverse(\''+p.id+'\')">عكس مع تصحيح المحافظ</button></div>':'')+'</div>'
  }).join('')||'<div class="empty">لا توجد دفعات من النوع الجديد بعد.</div>';
  q('v2Disputes').innerHTML=V2.disputes.map(function(d){
   return '<div class="v2-item"><b>'+v2Esc(v2CustomerName(d.customer_id))+'</b> <span class="v2-flag">'+v2Esc(d.status)+'</span><div>'+v2Esc(d.reason)+'</div><small>'+v2Date(d.created_at)+' · '+v2Esc(d.journal_id)+'</small>'+
@@ -216,6 +217,28 @@ async function v2ResolveDispute(id){
   await api('ledger_portal_disputes',{method:'PATCH',query:'?id=eq.'+id+'&owner_id=eq.'+V2.owner,
    body:{status:status,owner_note:reply.trim(),resolved_at:new Date().toISOString()}});
   await v2Load(true);v2Warn('تم تحديث الاعتراض، والعملية الأصلية بقيت محفوظة.',false);
+ }catch(e){v2Warn(v2Error(e),true)}
+}
+async function v2Reverse(id){
+ if(!v2CanManage())return;
+ var reason=prompt('سبب عكس الدفعة المؤكدة (رح تنعكس حركة دين الزبون وتصير حركة تصحيح لكل محفظة):');
+ if(reason===null)return;
+ try{v2Online();if(reason.trim().length<3)throw Error('اكتب سبباً واضحاً للعكس');
+  var result=await api('rpc/ledger_reverse_payment',{method:'POST',body:{
+   p_owner:V2.owner,p_payment:id,p_reason:reason.trim()
+  }});
+  await sync();await v2Load(true);
+  v2Warn('تم عكس الدفعة وتصحيح أرصدة المحافظ. سجل العملية القديمة محفوظ.',false);
+ }catch(e){v2Warn(v2Error(e),true)}
+}
+async function v2DisableStaff(){
+ try{v2Online();if(V2.role!=='owner')throw Error('المالك فقط يمكنه تعطيل الموظف');
+  var email=q('v2StaffEmail').value.trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw Error('أدخل بريد الموظف لتعطيله');
+  if(!confirm('هل بدك تعطّل صلاحيات هالموظف فوراً؟'))return;
+  await api('rpc/ledger_disable_staff',{method:'POST',body:{p_email:email}});
+  q('v2StaffEmail').value='';
+  v2Warn('تم تعطيل عضوية الموظف. لازم يسجّل خروج من الجلسات المفتوحة.',false);
  }catch(e){v2Warn(v2Error(e),true)}
 }
 async function v2AssignStaff(){
