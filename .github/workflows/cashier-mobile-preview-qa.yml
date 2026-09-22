@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - cashier-mobile-preview-20260923
+  pull_request:
+    branches:
+      - cashier/ledger-multicurrency-portal-20260923
   workflow_dispatch:
 permissions:
   contents: read
