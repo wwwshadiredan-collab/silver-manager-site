@@ -1,0 +1,23 @@
+/* Cashier Ledger extension: scoped to the existing application; mobile-first. */
+#ledgerV2 .v2-section{margin:14px 0;border:1px solid var(--l);border-radius:17px;background:var(--p);padding:15px}
+#ledgerV2 .v2-section h3{margin:0 0 12px}
+#ledgerV2 .v2-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:9px 0}
+#ledgerV2 .v2-row>.f{flex:1;min-width:135px;margin:0}
+#ledgerV2 input,#ledgerV2 select,#ledgerV2 textarea{background:#081426;color:var(--t);border:1px solid var(--l);border-radius:11px;padding:10px;max-width:100%}
+#ledgerV2 select,#ledgerV2 input[type=number],#ledgerV2 input[type=text]{width:100%}
+#ledgerV2 .v2-legs{display:grid;gap:8px}
+#ledgerV2 .v2-leg{display:grid;grid-template-columns:minmax(120px,3fr) minmax(92px,2fr) auto;align-items:end;gap:8px;padding:9px;background:#09192a;border:1px solid var(--l);border-radius:11px}
+#ledgerV2 .v2-list{display:grid;gap:8px}
+#ledgerV2 .v2-item{padding:11px;border:1px solid var(--l);background:#09192a;border-radius:12px;overflow-wrap:anywhere}
+#ledgerV2 .v2-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+#ledgerV2 .v2-kpis strong{font-size:21px;display:block;margin:7px 0}
+#ledgerV2 .v2-section small{color:var(--m)}
+#ledgerV2 .v2-green{color:var(--g)}#ledgerV2 .v2-red{color:var(--r)}
+#ledgerV2 .v2-amber{color:var(--w)}
+#ledgerV2 .v2-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(275px,1fr));gap:12px}
+#ledgerV2 .v2-inline-actions{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0}
+#ledgerV2 .v2-inline-actions .btn{padding:9px}
+#ledgerV2 .v2-flag{font-size:12px;border-radius:8px;padding:4px 7px;background:#183552}
+#ledgerV2 .v2-hidden{display:none}
+#ledgerV2 .v2-message{min-height:22px;margin:8px 0;overflow-wrap:anywhere}
+@media(max-width:600px){#ledgerV2 .v2-section{padding:11px}#ledgerV2 .v2-leg{grid-template-columns:1fr 1fr auto;gap:5px}#ledgerV2 .v2-leg .f{min-width:0}#ledgerV2 .v2-leg select{font-size:12px}#ledgerV2 .v2-leg .btn{padding:10px 7px}}
