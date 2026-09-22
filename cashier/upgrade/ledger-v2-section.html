@@ -1,0 +1,31 @@
+<section id="ledgerV2" class="view">
+<div class="hero"><div><h2>الصندوق والدفعات المتعددة</h2><p class="small muted">نفس Cashier Ledger · لا خصم قبل التأكيد · بدون حذف عمليات</p></div><button class="btn sec" onclick="v2Load(true)">تحديث</button></div>
+<div class="v2-section"><label for="v2Owner">المنشأة</label><select id="v2Owner" onchange="v2SetWorkspace()"><option>حسابي</option></select><p id="v2Message" class="v2-message small" role="status" aria-live="polite"></p></div>
+<section class="v2-section"><h3>الصناديق والمحافظ</h3><div id="v2Accounts" class="v2-kpis"></div>
+<div id="v2CashControls" class="hide"><h4>إضافة صندوق أو محفظة</h4><div class="v2-row">
+<div class="f"><label for="v2AccountLabel">اسم الصندوق</label><input id="v2AccountLabel" maxlength="80" placeholder="مثلاً: شام كاش"></div>
+<div class="f"><label for="v2Channel">نوع الصندوق</label><select id="v2Channel"><option value="cash">نقدي</option><option value="sham_cash">شام كاش</option><option value="syriatel_cash">سيرياتيل كاش</option><option value="local_wallet">محفظة محلية أخرى</option><option value="usdt">USDT</option></select></div>
+<div class="f"><label for="v2AccountCurrency">العملة</label><select id="v2AccountCurrency"><option value="USD">USD</option><option value="SYP">SYP</option><option value="USDT">USDT</option></select></div>
+<button class="btn pri" onclick="v2CreateAccount()">إضافة الصندوق</button></div></div></section>
+<section id="v2MoneyControls" class="v2-section"><h3>دفعة مختلطة بالدولار والسوري والمحافظ</h3>
+<div class="notice">ما بينخصم دين الزبون حتى تتأكد يدوياً من استلام كل أجزاء الدفعة.</div>
+<div class="v2-row"><div class="f"><label for="v2Customer">الزبون</label><select id="v2Customer"></select></div><div class="f"><label for="v2DebtCurrency">عملة الدين الذي سيتم تسديده</label><select id="v2DebtCurrency" onchange="v2Preview()"><option value="USD">USD</option><option value="SYP">SYP</option></select></div></div>
+<div class="v2-row"><div class="f"><label for="v2FX">سعر الصرف المثبت (1 دولار = كم سوري)</label><input id="v2FX" inputmode="decimal" type="number" min="0.000001" step="any" placeholder="أدخل سعر اليوم لهذه العملية" oninput="v2Preview()"></div>
+<div class="f"><label for="v2USDT">القيمة المثبتة لـ 1 USDT بالدولار</label><input id="v2USDT" type="number" min="0.000001" step="any" value="1" oninput="v2Preview()"></div></div>
+<h4>أجزاء الدفع</h4><div class="v2-legs" id="v2Legs"></div><div class="v2-row"><button class="btn sec" onclick="v2AddLeg()">+ إضافة محفظة أو عملة</button></div>
+<div class="f"><label for="v2Note">ملاحظة اختيارية</label><textarea id="v2Note" rows="2" maxlength="500"></textarea></div><p id="v2Preview" class="v2-amber">حدّد العملة والمبلغ وسعر الصرف</p>
+<button class="btn pri" id="v2PrepareBtn" onclick="v2Prepare()">تسجيل دفعة بانتظار التأكيد</button></section>
+<div class="v2-split"><section class="v2-section"><h3>بانتظار التأكيد اليدوي</h3><div id="v2Pending" class="v2-list"></div></section>
+<section class="v2-section"><h3>دفعات مؤكدة ومرفوضة</h3><div id="v2History" class="v2-list"></div></section></div>
+<section id="v2ReconcileControls" class="v2-section"><h3>تسوية الصندوق اليومية</h3><p class="small muted">اختر صندوقاً من الأعلى واضغط «تسوية اليوم»؛ بنحفظ المتوقع والفعلي والفروقات دون حذف القديم.</p><div id="v2Closings" class="v2-list"></div></section>
+<section id="v2CodeControls" class="v2-section"><h3>كشف حساب زبون بكود فقط</h3><p class="small muted">لا يحتاج الزبون بريد إلكتروني أو حساب. كود LC- مربوط بزبون واحد فقط، مختلف عن دعوات الحسابات القديمة CL-.</p>
+<div class="v2-row"><div class="f"><label for="v2PortalCustomer">الزبون</label><select id="v2PortalCustomer"></select></div><button class="btn pri" onclick="v2IssueCustomerCode()">إنشاء كود كشف الحساب</button></div>
+<div id="v2IssuedSection" class="hide"><div class="f"><label for="v2IssuedCode">الكود الجديد</label><input id="v2IssuedCode" readonly dir="ltr"></div>
+<div class="f"><label for="v2PortalUrl">رابط الكشف</label><input id="v2PortalUrl" readonly dir="ltr"></div><button class="btn sec" onclick="v2CopyCode()">نسخ الرسالة والكود</button></div></section>
+<section id="v2StaffControls" class="v2-section"><h3>صلاحيات الموظفين</h3><p class="small muted">الموظف يحتاج حساباً مفعلّاً. المشاهد يقرأ فقط، والكاشير يسجّل ويؤكد الدفعات، والمدير يراجع الاعتراضات ويغلق الصندوق.</p>
+<div class="v2-row"><div class="f"><label for="v2StaffEmail">بريد حساب الموظف</label><input id="v2StaffEmail" type="email" dir="ltr" placeholder="employee@example.com"></div>
+<div class="f"><label for="v2StaffRole">الصلاحية</label><select id="v2StaffRole"><option value="viewer">مشاهد</option><option value="cashier">كاشير</option><option value="manager">مدير</option></select></div>
+<button class="btn pri" onclick="v2AssignStaff()">حفظ الصلاحية</button></div></section>
+<div id="v2AdminSections" class="v2-split"><section class="v2-section"><h3>اعتراضات الزبائن</h3><div id="v2Disputes" class="v2-list"></div></section>
+<section class="v2-section"><h3>سجل التدقيق من الخادم</h3><div id="v2Audit" class="v2-list"></div></section></div>
+</section>
