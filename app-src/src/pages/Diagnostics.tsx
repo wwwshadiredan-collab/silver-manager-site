@@ -1,0 +1,42 @@
+import { ChangeEvent, useCallback, useRef, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Download, Play, RefreshCw, Upload } from 'lucide-react'
+import { db } from '../db'
+import { getDeviceId, newId } from '../lib/ids'
+import { queueMutation } from '../lib/mutations'
+import { syncNow } from '../lib/sync'
+import { useData } from '../lib/useData'
+import { notifyDataChanged } from '../lib/events'
+import { currentShopId } from '../lib/supabase'
+import { Card, PageHeader } from '../components/UI'
+
+type TestResult={name:string,ok:boolean,message:string}
+
+export function Diagnostics(){
+  const loader=useCallback(async()=>({outbox:await db.outbox.toArray(),audit:await db.audit.orderBy('createdAt').reverse().limit(20).toArray()}),[]); const {data,refresh}=useData(loader,{outbox:[],audit:[]} as Awaited<ReturnType<typeof loader>>)
+  const [msg,setMsg]=useState(''); const [tests,setTests]=useState<TestResult[]>([]); const last=localStorage.getItem('silver-manager-last-sync');const fileRef=useRef<HTMLInputElement>(null)
+  const runSync=async()=>{const r=await syncNow();setMsg(r.message);refresh()}
+  const backup=async()=>{
+    const shopId=currentShopId()
+    if(!shopId){setMsg('سجل الدخول إلى المنشأة قبل إنشاء نسخة احتياطية.');return}
+    const payload={version:3,shopId,exportedAt:new Date().toISOString(),deviceId:getDeviceId(),silverItems:await db.silverItems.toArray(),customers:await db.customers.toArray(),suppliers:await db.suppliers.toArray(),sales:await db.sales.toArray(),purchases:await db.purchases.toArray(),buybacks:await db.buybacks.toArray(),repairs:await db.repairs.toArray(),refining:await db.refining.toArray(),stocktakes:await db.stocktakes.toArray(),expenses:await db.expenses.toArray(),rates:await db.rates.toArray(),settings:await db.settings.toArray(),outbox:await db.outbox.toArray(),audit:await db.audit.toArray()}
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');a.href=url;a.download=`silver-manager-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url)
+  }
+  const restore=async(e:ChangeEvent<HTMLInputElement>)=>{const file=e.target.files?.[0];if(!file)return;try{const payload=JSON.parse(await file.text());if(!payload||!payload.version)throw new Error('الملف ليس نسخة Silver Manager صالحة');const shopId=currentShopId();if(!shopId)throw new Error('سجل الدخول إلى المنشأة أولاً ثم استورد النسخة الاحتياطية.');if(Number(payload.version)<3||!payload.shopId)throw new Error('هذه نسخة احتياطية قديمة غير مرتبطة بمنشأة. أنشئ نسخة جديدة من الجهاز الأصلي قبل النقل.');if(payload.shopId!==shopId)throw new Error('هذه النسخة الاحتياطية تخص منشأة مختلفة ولا يمكن دمجها مع المنشأة الحالية.');await db.transaction('rw',[db.silverItems,db.customers,db.suppliers,db.sales,db.purchases,db.buybacks,db.repairs,db.refining,db.stocktakes,db.expenses,db.rates,db.settings,db.outbox,db.audit],async()=>{if(payload.silverItems?.length)await db.silverItems.bulkPut(payload.silverItems);if(payload.customers?.length)await db.customers.bulkPut(payload.customers);if(payload.suppliers?.length)await db.suppliers.bulkPut(payload.suppliers);if(payload.sales?.length)await db.sales.bulkPut(payload.sales);if(payload.purchases?.length)await db.purchases.bulkPut(payload.purchases);if(payload.buybacks?.length)await db.buybacks.bulkPut(payload.buybacks);if(payload.repairs?.length)await db.repairs.bulkPut(payload.repairs);if(payload.refining?.length)await db.refining.bulkPut(payload.refining);if(payload.stocktakes?.length)await db.stocktakes.bulkPut(payload.stocktakes);if(payload.expenses?.length)await db.expenses.bulkPut(payload.expenses);if(payload.rates?.length)await db.rates.bulkPut(payload.rates);if(payload.settings?.length)await db.settings.bulkPut(payload.settings);if(payload.outbox?.length)await db.outbox.bulkPut(payload.outbox);if(payload.audit?.length)await db.audit.bulkPut(payload.audit)});setMsg('تم استيراد النسخة الاحتياطية ودمجها مع البيانات المحلية.');notifyDataChanged();refresh()}catch(err){setMsg(err instanceof Error?err.message:'تعذر استيراد النسخة')}finally{e.target.value=''}}
+  const runQa=async()=>{
+    const results:TestResult[]=[]
+    try{
+      const id=newId(); const now=new Date().toISOString();
+      await db.silverItems.put({id,sku:`QA-${id.slice(0,5)}`,name:'قطعة اختبار أوفلاين',category:'QA',grossWeight:'1.000',stoneWeight:'0.000',netWeight:'1.000',purity:'925',pureSilverWeight:'0.925',quantity:1,metalCost:'1.00',makingChargeType:'fixed',makingChargeValue:'0.00',stoneCost:'0.00',otherCost:'0.00',landedCost:'1.00',sellingPrice:'2.00',location:'QA',status:'available',createdAt:now,updatedAt:now,version:1,archived:false,syncStatus:'pending',deviceId:getDeviceId()})
+      await queueMutation({entityId:id,entityType:'silverItem',operation:'create',payload:{qa:true},version:1})
+      const reread=await db.silverItems.get(id); results.push({name:'حفظ محلي IndexedDB',ok:!!reread,message:reread?'تمت القراءة بعد الكتابة':'فشل'})
+      const q=await db.outbox.where('entityId').equals(id).toArray(); results.push({name:'Outbox دائم',ok:q.length===1,message:`عدد العمليات: ${q.length}`})
+      await db.silverItems.update(id,{archived:true,status:'archived',version:2,updatedAt:new Date().toISOString()}); const ar=await db.silverItems.get(id); results.push({name:'أرشفة محلية',ok:!!ar?.archived,message:ar?.archived?'نجح':'فشل'})
+      const beforeReload=await db.silverItems.get(id); await db.close(); await db.open(); const afterReload=await db.silverItems.get(id); results.push({name:'إغلاق/إعادة فتح قاعدة البيانات',ok:!!beforeReload&&!!afterReload,message:afterReload?'البيانات بقيت بعد إعادة الفتح':'فشل الاستمرار'})
+      const mutation=(await db.outbox.where('entityId').equals(id).first()); results.push({name:'Idempotency Key',ok:!!mutation?.idempotencyKey,message:mutation?.idempotencyKey?'موجود لكل عملية':'مفقود'})
+      results.push({name:'Service Worker/PWA',ok:'serviceWorker' in navigator,message:'دعم Service Worker متوفر بالمتصفح'})
+      await db.silverItems.delete(id); const qq=await db.outbox.where('entityId').equals(id).toArray(); for(const x of qq)await db.outbox.delete(x.mutationId)
+    }catch(e){results.push({name:'اختبار عام',ok:false,message:e instanceof Error?e.message:'خطأ'})}
+    setTests(results);notifyDataChanged();refresh()
+  }
+  return <><PageHeader title="الأوفلاين والمزامنة" description="مركز تشخيص التخزين المحلي والطابور والمزامنة — لا يتم حذف أي عملية من الطابور قبل تأكيد الخادم" actions={<div className="button-row"><button className="btn" onClick={runQa}><Play size={16}/> اختبار محلي</button><button className="btn" onClick={backup}><Download size={16}/> نسخة احتياطية</button><button className="btn" onClick={()=>fileRef.current?.click()}><Upload size={16}/> استيراد نسخة</button><input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={restore}/><button className="btn primary" onClick={runSync}><RefreshCw size={16}/> مزامنة الآن</button></div>}/>{msg&&<div className="notice info">{msg}</div>}<div className="stats-grid compact"><div className="stat"><span>حالة الإنترنت</span><strong>{navigator.onLine?'متصل':'أوفلاين'}</strong></div><div className="stat"><span>عمليات الطابور</span><strong>{data.outbox.length}</strong></div><div className="stat"><span>التعارضات</span><strong>{data.outbox.filter(x=>x.syncStatus==='conflict').length}</strong></div><div className="stat"><span>Device ID</span><strong className="mono tiny">{getDeviceId().slice(0,12)}</strong></div></div><div className="grid-2 mt"><Card><h3>حالة الطابور</h3>{data.outbox.length?<div className="queue-list">{data.outbox.map(x=><div key={x.mutationId}><div><span><b>{x.entityType}</b> • {x.operation}</span>{x.lastError&&<small className="text-danger" style={{display:'block',marginTop:4}}>{x.lastError}</small>}</div><span className={`badge ${x.syncStatus}`}>{x.syncStatus}</span></div>)}</div>:<div className="empty">لا توجد عمليات معلقة</div>}<p className="muted">آخر مزامنة: {last?new Date(last).toLocaleString('ar'):'لا يوجد بعد'}</p></Card><Card><h3>اختبارات QA المحلية</h3>{tests.length?tests.map(t=><div className={`test-row ${t.ok?'ok':'bad'}`} key={t.name}>{t.ok?<CheckCircle2 size={18}/>:<AlertTriangle size={18}/>}<div><b>{t.name}</b><small>{t.message}</small></div></div>):<p className="muted">شغّل «اختبار محلي» للتحقق من التخزين والطابور والأرشفة.</p>}</Card></div></>
+}
