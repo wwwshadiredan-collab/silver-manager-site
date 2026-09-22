@@ -64,6 +64,15 @@ begin
  if (select count(*) from public.ledger_cash_movements where reversal_payment_id=v_payment)<>1
  then raise exception 'DUPLICATE_REVERSAL_MOVEMENT';end if;
  insert into ledger_upgrade_qa values('reversal_debt_cash_idempotency','pass');
+ -- Even after an authorized RPC reversal within the same transaction,
+ -- another direct receipt reversal must remain blocked.
+ v_fail:=false;
+ begin
+   insert into public.journal(owner_id,subject_id,category,currency,value,delta,related_id,note)
+   values(v_owner,v_customer,'receipt_reversal','USD',-6,6,v_journal,'second unauthorized reversal');
+ exception when others then v_fail:=true;end;
+ if not v_fail then raise exception 'REPLAY_AFTER_AUTHORIZED_REVERSAL_BYPASS';end if;
+ insert into ledger_upgrade_qa values('post_reversal_replay_blocked','pass');
 
  perform public.ledger_disable_staff(v_email);
  perform set_config('request.jwt.claim.sub',v_staff::text,true);
