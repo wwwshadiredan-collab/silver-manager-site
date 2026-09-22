@@ -200,7 +200,7 @@ async function copyInvite(){
 }
 async function copyInviteMessage(){
   var code=q('issuedCode').value;if(!code)return;
-  var message='أهلاً فيك بتطبيق Cashier Ledger 🌟\\nرابط التطبيق:\\nhttps://wwwshadiredan-collab.github.io/silver-manager-site/cashier/\\n\\nكود تفعيل حسابك: '+code+'\\n\\nافتح الرابط، واختار «تفعيل حساب بكود دعوة». سجّل بإيميلك الخاص وكلمة مرور جديدة، والصق الكود. الكود صالح 7 أيام ولمرة واحدة. بعد التسجيل، افتح بريدك واضغط رابط تأكيد الحساب، ثم سجّل دخول. وإذا ما وصلت الرسالة اضغط «إعادة إرسال رسالة تفعيل البريد».';
+  var message='أهلاً فيك بتطبيق Cashier Ledger 🌟\nرابط التطبيق:\nhttps://wwwshadiredan-collab.github.io/silver-manager-site/cashier/\n\nكود تفعيل حسابك: '+code+'\n\nافتح الرابط، واختار «تفعيل حساب بكود دعوة». سجّل بإيميلك الخاص وكلمة مرور جديدة، والصق الكود. الكود صالح 7 أيام ولمرة واحدة. بعد التسجيل، افتح بريدك واضغط رابط تأكيد الحساب، ثم سجّل دخول. وإذا ما وصلت الرسالة اضغط «إعادة إرسال رسالة تفعيل البريد».';
   try{await navigator.clipboard.writeText(message);q('inviteStatus').textContent='تم نسخ الرسالة كاملة. الصقها في واتساب للزبون.'}catch(e){q('inviteStatus').textContent='النسخ التلقائي غير متاح على هذا الجهاز. انسخ الكود والرسالة يدوياً.'}
 }
 async function rf(){if(!S||!S.refresh_token)throw Error('انتهت الجلسة');S=await af('/auth/v1/token?grant_type=refresh_token',{refresh_token:S.refresh_token});localStorage.setItem('cs',JSON.stringify(S));D.user=S.user;return S.access_token}
