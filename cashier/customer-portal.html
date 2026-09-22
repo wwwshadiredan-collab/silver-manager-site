@@ -68,7 +68,7 @@ var portalKey='sb_publishable_hrS7WRJK3Lb7OjB-lMuKCA_UlSysRlH';
 var portalState={code:'',entries:[],disputes:[]};
 function byId(id){return document.getElementById(id)}
 function escapeText(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function displayMoney(n,c){return Number(n||0).toLocaleString('ar-SY',{maximumFractionDigits:2})+(c==='SYP'?' ل.س':' USD')}
+function displayMoney(n,c){return Number(n||0).toLocaleString('ar-SY',{maximumFractionDigits:c==='USDT'?6:2})+(c==='SYP'?' ل.س':c==='USDT'?' USDT':' USD')}
 function dateFmt(d){return d?new Date(d).toLocaleString('ar-SY'):'—'}
 function statusMsg(s,error){byId('status').textContent=s||'';byId('status').style.color=error?'#ff8c9c':'#39d98a'}
 function failure(){statusMsg('تعذّر فتح الحساب. تحقق من الكود أو اطلب كوداً جديداً من صاحب الكاشير.',true)}
@@ -103,9 +103,19 @@ function renderStatement(result){
  byId('balanceSYP').textContent=displayMoney(result.balance&&result.balance.SYP,'SYP');
  byId('entryList').innerHTML=portalState.entries.map(function(e){
   var disputed=portalState.disputes.some(function(d){return d.journal_id===e.id});
+  var note=String(e.note||'').replace(/^دفعة متعددة القنوات #[0-9a-f-]{36}\s*\|\s*/i,'').trim();
+  var detail=e.payment_details;
+  var detailHtml=detail?
+     '<div class="muted" style="margin-top:5px">سعر الدولار المثبّت: '+escapeText(detail.fx_syp_per_usd)+
+       ' ل.س · سعر USDT بالدولار: '+escapeText(detail.usdt_usd_rate)+'</div>'+
+     (Array.isArray(detail.legs)?detail.legs.map(function(leg){
+       return '<div class="muted">↳ '+escapeText(leg.wallet)+' ('+escapeText(leg.method)+') : '+
+          displayMoney(leg.amount,leg.currency)+'</div>'
+     }).join(''):''):'';
+
   return '<div class="entry"><div class="row" style="justify-content:space-between"><b>'+escapeText(labelFor(e.category))+
    '</b><b class="'+(Number(e.balance_change)<0?'positive':'negative')+'">'+displayMoney(e.amount,e.currency)+'</b></div>'+
-   '<div class="muted">'+dateFmt(e.date)+(e.note?' · '+escapeText(e.note):'')+'</div>'+
+   '<div class="muted">'+dateFmt(e.date)+(note?' · '+escapeText(note):'')+'</div>'+detailHtml+
    '<div class="muted">تغيّر الدين: '+displayMoney(e.balance_change,e.currency)+'</div>'+
    (disputed?'<span class="muted">تم تقديم اعتراض على هاي الحركة</span>':
    '<button style="margin-top:6px" onclick="portalDispute(\''+escapeText(e.id)+'\')">اعتراض على العملية</button>')+'</div>'
