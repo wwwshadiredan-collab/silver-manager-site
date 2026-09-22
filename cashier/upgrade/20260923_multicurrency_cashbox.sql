@@ -258,6 +258,11 @@ begin
  -- Serialize concurrent confirmations for the same customer.
  perform 1 from public.customers where id=v_payment.customer_id and user_id=p_owner for update;
  if not found then raise exception 'CUSTOMER_NOT_FOUND' using errcode='42501'; end if;
+ if exists(select 1 from public.ledger_day_closings closing
+    join public.ledger_payment_parts part on part.account_id=closing.account_id
+      and part.payment_id=v_payment.id
+    where closing.owner_id=p_owner and closing.local_day=(now() at time zone 'Asia/Damascus')::date)
+ then raise exception 'CASH_ACCOUNT_ALREADY_CLOSED_TODAY' using errcode='22023';end if;
  select coalesce(sum(delta),0) into v_debt from public.journal
     where owner_id=p_owner and subject_id=v_payment.customer_id and currency=v_payment.debt_currency;
  if v_payment.settled_amount>v_debt then
@@ -305,6 +310,9 @@ begin
    then raise exception 'INVALID_MOVEMENT' using errcode='22023'; end if;
  if not exists(select 1 from public.ledger_cash_accounts where id=p_account and owner_id=p_owner and active)
  then raise exception 'CASH_ACCOUNT_NOT_FOUND' using errcode='42501'; end if;
+ if exists(select 1 from public.ledger_day_closings where owner_id=p_owner
+   and account_id=p_account and local_day=(now() at time zone 'Asia/Damascus')::date)
+ then raise exception 'CASH_ACCOUNT_ALREADY_CLOSED_TODAY' using errcode='22023';end if;
  if p_related is not null and not exists(select 1 from public.ledger_cash_movements
  where id=p_related and owner_id=p_owner and account_id=p_account)
  then raise exception 'RELATED_MOVEMENT_NOT_FOUND' using errcode='42501'; end if;
@@ -325,7 +333,7 @@ begin
   'account_id',a.id,'label',a.label,'channel',a.channel,'currency',a.currency,
   'expected',coalesce((select sum(pp.amount) from public.ledger_payment_parts pp
     join public.ledger_payments p on p.id=pp.payment_id
-    where pp.account_id=a.id and p.owner_id=p_owner and p.state='confirmed'
+    where pp.account_id=a.id and p.owner_id=p_owner and p.state in ('confirmed','reversed')
      and (p.confirmed_at at time zone 'Asia/Damascus')::date<=v_day),0)
      +coalesce((select sum(m.amount) from public.ledger_cash_movements m
       where m.account_id=a.id and m.owner_id=p_owner
@@ -347,7 +355,7 @@ begin
     and account_id=p_account and local_day=p_day) then raise exception 'DAY_ALREADY_CLOSED' using errcode='23505'; end if;
  select coalesce(sum(pp.amount),0) into v_expected
  from public.ledger_payment_parts pp join public.ledger_payments p on p.id=pp.payment_id
- where pp.owner_id=p_owner and pp.account_id=p_account and p.state='confirmed'
+ where pp.owner_id=p_owner and pp.account_id=p_account and p.state in ('confirmed','reversed')
    and (p.confirmed_at at time zone 'Asia/Damascus')::date<=p_day;
  v_expected:=v_expected+coalesce((select sum(amount) from public.ledger_cash_movements
    where owner_id=p_owner and account_id=p_account
