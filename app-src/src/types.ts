@@ -108,6 +108,23 @@ export interface SilverRate extends BaseEntity {
   effectiveAt: string
 }
 
+export interface CashClosing extends BaseEntity {
+  businessDate: string
+  openingUsd: string
+  openingSyp: string
+  salesUsd: string
+  salesSyp: string
+  cashOutUsd: string
+  expectedUsd: string
+  expectedSyp: string
+  countedUsd: string
+  countedSyp: string
+  differenceUsd: string
+  differenceSyp: string
+  notes?: string
+  closedAt: string
+}
+
 
 export interface PurchaseLine {
   id: string
