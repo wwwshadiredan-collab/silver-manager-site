@@ -74,7 +74,7 @@ function statusMsg(s,error){byId('status').textContent=s||'';byId('status').styl
 function failure(){statusMsg('تعذّر فتح الحساب. تحقق من الكود أو اطلب كوداً جديداً من صاحب الكاشير.',true)}
 async function portalRPC(name,args){
  var response=await fetch(portalURL+'/rest/v1/rpc/'+name,{
- method:'POST',headers:{'apikey':portalKey,'Authorization':'Bearer '+portalKey,'Content-Type':'application/json'},
+ method:'POST',headers:{'apikey':portalKey,'Content-Type':'application/json'},
  body:JSON.stringify(args)
  });
  if(!response.ok)throw Error('طلب غير صالح');
