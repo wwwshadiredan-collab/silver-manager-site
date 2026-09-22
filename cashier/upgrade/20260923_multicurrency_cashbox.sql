@@ -15,6 +15,27 @@ create policy ledger_staff_read on public.ledger_staff_members for select to aut
  using(owner_id=(select auth.uid()) or user_id=(select auth.uid()));
 grant select on public.ledger_staff_members to authenticated;
 
+-- Staff get read-only access to customers and journal belonging to the assigned owner.
+-- Existing owner policies stay intact; clients with portal codes never receive auth-table access.
+create policy customers_assigned_staff_read on public.customers for select to authenticated
+ using(exists(select 1 from public.ledger_staff_members m where m.owner_id=customers.user_id
+   and m.user_id=(select auth.uid()) and m.active));
+create policy journal_assigned_staff_read on public.journal for select to authenticated
+ using(exists(select 1 from public.ledger_staff_members m where m.owner_id=journal.owner_id
+   and m.user_id=(select auth.uid()) and m.active));
+create policy ledger_audit_manager_read on public.ledger_audit for select to authenticated
+ using(exists(select 1 from public.ledger_staff_members m where m.owner_id=ledger_audit.owner_id
+   and m.user_id=(select auth.uid()) and m.active and m.role='manager'));
+create policy ledger_disputes_manager_read on public.ledger_portal_disputes for select to authenticated
+ using(exists(select 1 from public.ledger_staff_members m where m.owner_id=ledger_portal_disputes.owner_id
+   and m.user_id=(select auth.uid()) and m.active and m.role='manager'));
+create policy ledger_disputes_manager_update on public.ledger_portal_disputes for update to authenticated
+ using(exists(select 1 from public.ledger_staff_members m where m.owner_id=ledger_portal_disputes.owner_id
+   and m.user_id=(select auth.uid()) and m.active and m.role='manager'))
+ with check(exists(select 1 from public.ledger_staff_members m where m.owner_id=ledger_portal_disputes.owner_id
+   and m.user_id=(select auth.uid()) and m.active and m.role='manager'));
+
+
 create or replace function ledger_private.can_work(p_owner uuid,p_level text default 'read')
 returns boolean language sql stable security definer set search_path='' as $f$
  select (select auth.uid())=p_owner or exists(
