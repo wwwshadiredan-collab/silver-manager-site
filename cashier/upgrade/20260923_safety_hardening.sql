@@ -32,7 +32,7 @@ begin
  if new.category='receipt_reversal' and new.related_id is not null
    and exists(select 1 from public.ledger_payments p
        where p.journal_id=new.related_id and p.owner_id=new.owner_id)
-   and coalesce(current_setting('ledger.authorized_reversal',true),'')<>'approved'
+   and coalesce(current_setting('ledger.authorized_reversal',true),'')<>new.related_id::text
  then raise exception 'USE_MIXED_PAYMENT_REVERSAL' using errcode='23514';
  end if;
  return new;
@@ -67,13 +67,15 @@ begin
  if exists(select 1 from public.journal
    where owner_id=p_owner and related_id=v_payment.journal_id)
  then raise exception 'PAYMENT_ALREADY_REVERSED_EXTERNALLY' using errcode='23514';end if;
- perform set_config('ledger.authorized_reversal','approved',true);
+ perform set_config('ledger.authorized_reversal',v_payment.journal_id::text,true);
  insert into public.journal(owner_id,subject_id,category,currency,value,secondary_value,
                              delta,note,related_id,happened_at)
  values(p_owner,v_payment.customer_id,'receipt_reversal',v_payment.debt_currency,
    -v_payment.settled_amount,0,v_payment.settled_amount,
    concat('عكس دفعة مختلطة: ',trim(p_reason)),v_payment.journal_id,now())
  returning id into v_reversal;
+ -- Restrict the privilege to the exact receipt and drop it before any other statement.
+ perform set_config('ledger.authorized_reversal','',true);
  for v_part in
   select account_id,sum(amount) as received from public.ledger_payment_parts
   where owner_id=p_owner and payment_id=p_payment group by account_id
