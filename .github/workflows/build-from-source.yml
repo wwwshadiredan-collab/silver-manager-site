@@ -83,3 +83,4 @@ jobs:
           fi
           git commit -m "deploy: rebuild Silver Manager from mirrored source"
           git push origin main
+# build trigger: cash closing
