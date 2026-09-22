@@ -1,0 +1,30 @@
+import { FormEvent, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { db } from '../db'
+import { calcPureSilverWeight, calcSilverPrice, money } from '../lib/money'
+import { newId } from '../lib/ids'
+import { saveItem } from '../lib/repository'
+import type { SilverItem } from '../types'
+import { Card, PageHeader } from '../components/UI'
+
+const empty:SilverItem={id:'',sku:'',name:'',category:'',grossWeight:'0.000',stoneWeight:'0.000',netWeight:'0.000',purity:'925',pureSilverWeight:'0.000',quantity:1,metalCost:'0.00',makingChargeType:'fixed',makingChargeValue:'0.00',stoneCost:'0.00',otherCost:'0.00',landedCost:'0.00',sellingPrice:'0.00',location:'المحل الرئيسي',status:'available',createdAt:'',updatedAt:'',version:0,archived:false}
+
+export function ItemForm(){
+  const {id}=useParams(); const nav=useNavigate(); const [form,setForm]=useState<SilverItem>({...empty,id:newId()}); const [rate,setRate]=useState('1.20')
+  useEffect(()=>{(async()=>{if(id){const x=await db.silverItems.get(id); if(x)setForm(x)} const s=await db.settings.get('pureSilverRate'); if(s)setRate(s.value)})()},[id])
+  const computed=useMemo(()=>{
+    try{return calcSilverPrice({netWeight:form.netWeight,purity:form.purity,ratePerPureGram:rate,makingType:form.makingChargeType,makingValue:form.makingChargeValue,stoneCost:form.stoneCost,otherCost:form.otherCost})}catch{return {pureWeight:'0.000',metalValue:'0.00',makingCharge:'0.00',total:'0.00'}}
+  },[form.netWeight,form.purity,form.makingChargeType,form.makingChargeValue,form.stoneCost,form.otherCost,rate])
+  useEffect(()=>{setForm(f=>f.sellingPrice===computed.total?f:{...f,sellingPrice:computed.total})},[computed.total])
+  const set=(k:keyof SilverItem,v:any)=>setForm(f=>({...f,[k]:v}))
+  const weightChanged=(gross:string,stone:string)=>{const net=Math.max(0,Number(gross||0)-Number(stone||0)).toFixed(3); setForm(f=>({...f,grossWeight:gross,stoneWeight:stone,netWeight:net,pureSilverWeight:calcPureSilverWeight(net,f.purity)}))}
+  const submit=async(e:FormEvent)=>{e.preventDefault(); if(!form.name.trim()||!form.sku.trim())return alert('الاسم وSKU مطلوبان'); if(Number(form.purity)<=0||Number(form.purity)>1000)return alert('العيار يجب أن يكون بين 1 و1000'); if(Number(form.grossWeight)<0||Number(form.stoneWeight)<0||Number(form.stoneWeight)>Number(form.grossWeight))return alert('وزن الأحجار يجب ألا يتجاوز الوزن الإجمالي'); const entity={...form,pureSilverWeight:calcPureSilverWeight(form.netWeight,form.purity),landedCost:money(Number(form.metalCost)+Number(computed.makingCharge)+Number(form.stoneCost)+Number(form.otherCost))}; await saveItem(entity); nav('/inventory')}
+  return <>
+    <PageHeader title={id?'تعديل قطعة':'إضافة قطعة فضة'} description="الوزن والعيار والتكلفة محفوظة بدقة ولا تعتمد على سعر اليوم بعد تسجيل المستند"/>
+    <form onSubmit={submit}><div className="grid-2"><Card><h3>بيانات القطعة</h3><div className="form-grid"><Field label="SKU"><input value={form.sku} onChange={e=>set('sku',e.target.value)} required/></Field><Field label="اسم القطعة"><input value={form.name} onChange={e=>set('name',e.target.value)} required/></Field><Field label="التصنيف"><input value={form.category} onChange={e=>set('category',e.target.value)}/></Field><Field label="الموقع"><input value={form.location} onChange={e=>set('location',e.target.value)}/></Field><Field label="الوزن الإجمالي (غ)"><input type="number" step="0.001" value={form.grossWeight} onChange={e=>weightChanged(e.target.value,form.stoneWeight)}/></Field><Field label="وزن الأحجار/الإضافات (غ)"><input type="number" step="0.001" value={form.stoneWeight} onChange={e=>weightChanged(form.grossWeight,e.target.value)}/></Field><Field label="الوزن الصافي"><input value={form.netWeight} readOnly/></Field><Field label="العيار"><input type="number" min="1" max="1000" value={form.purity} onChange={e=>{set('purity',e.target.value);set('pureSilverWeight',calcPureSilverWeight(form.netWeight,e.target.value))}}/></Field><Field label="وزن الفضة الخالص"><input value={form.pureSilverWeight} readOnly/></Field></div></Card>
+      <Card><h3>التكلفة والتسعير</h3><div className="form-grid"><Field label="سعر غرام الفضة الخالصة"><input type="number" step="0.0001" value={rate} onChange={e=>setRate(e.target.value)}/></Field><Field label="تكلفة المعدن المدخلة"><input type="number" step="0.01" value={form.metalCost} onChange={e=>set('metalCost',e.target.value)}/></Field><Field label="نوع الأجرة"><select value={form.makingChargeType} onChange={e=>set('makingChargeType',e.target.value)}><option value="fixed">مبلغ ثابت</option><option value="perGram">لكل غرام</option><option value="percentage">نسبة %</option></select></Field><Field label="قيمة الأجرة"><input type="number" step="0.01" value={form.makingChargeValue} onChange={e=>set('makingChargeValue',e.target.value)}/></Field><Field label="تكلفة الأحجار"><input type="number" step="0.01" value={form.stoneCost} onChange={e=>set('stoneCost',e.target.value)}/></Field><Field label="تكاليف أخرى"><input type="number" step="0.01" value={form.otherCost} onChange={e=>set('otherCost',e.target.value)}/></Field><Field label="سعر البيع (محسوب تلقائياً)"><input type="number" step="0.01" value={form.sellingPrice} onChange={e=>set('sellingPrice',e.target.value)}/></Field></div><div className="calc-box"><span>قيمة المعدن حسب السعر الحالي: <b>{computed.metalValue}</b></span><span>الأجرة المحسوبة: <b>{computed.makingCharge}</b></span><span>سعر مقترح: <b>{computed.total}</b></span></div></Card></div>
+      <Card className="mt"><Field label="ملاحظات"><textarea value={form.notes||''} onChange={e=>set('notes',e.target.value)} rows={3}/></Field><div className="button-row end"><button className="btn" type="button" onClick={()=>nav(-1)}>إلغاء</button><button className="btn primary" type="submit">حفظ القطعة</button></div></Card>
+    </form>
+  </>
+}
+function Field({label,children}:{label:string,children:ReactNode}){return <label className="field"><span>{label}</span>{children}</label>}
