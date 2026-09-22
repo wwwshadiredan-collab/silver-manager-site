@@ -63,7 +63,38 @@ async function sendRecoveryEmail(){var email=q('recoveryEmail').value.trim(),btn
 async function verifyRecoveryCode(){var email=q('recoveryEmail').value.trim(),code=q('recoveryOtp').value.trim().replace(/\s/g,'');if(!email||code.length<6){feedback('recoveryMessage','أدخل البريد ورمز التحقق المرسل إلك.',true);return}try{var session=await af('/auth/v1/verify',{email:email,token:code,type:'recovery'});showNewPassword(session)}catch(e){feedback('recoveryMessage','رمز التحقق غير صحيح أو انتهت صلاحيته. تقدر تطلب رسالة جديدة.',true)}}
 async function verifyRecoveryLink(){var raw=q('recoveryLink').value.trim();try{var link=new URL(raw),supabase=new URL(U),token=link.searchParams.get('token_hash')||link.searchParams.get('token');if(link.host===location.host&&link.pathname===location.pathname){var fragment=new URLSearchParams(link.hash.slice(1));if(fragment.get('type')==='recovery'&&fragment.get('access_token')){showNewPassword({access_token:fragment.get('access_token'),refresh_token:fragment.get('refresh_token')});q('recoveryLink').value='';return}}if(link.host!==supabase.host||link.pathname!=='/auth/v1/verify'||link.searchParams.get('type')!=='recovery'||!token)throw Error('Bad link');var session=await af('/auth/v1/verify',{token_hash:token,type:'recovery'});showNewPassword(session);q('recoveryLink').value=''}catch(e){feedback('recoveryMessage','ما قدرنا نتحقق من الرابط. تأكد إنك نسخت رابط الاستعادة بالكامل وإنه لسا صالح، أو اطلب رسالة جديدة.',true)}}
 async function completePasswordReset(){var password=q('newPassword').value,confirmation=q('confirmPassword').value,btn=q('updatePasswordBtn');if(password.length<8||password.length>72){feedback('passwordResetMessage','كلمة المرور لازم تكون بين 8 و72 حرف.',true);return}if(password!==confirmation){feedback('passwordResetMessage','كلمتا المرور مو متطابقتين.',true);return}if(!RECOVERY_SESSION||!RECOVERY_SESSION.access_token){feedback('passwordResetMessage','جلسة الاستعادة منتهية. اطلب رابط جديد.',true);return}btn.disabled=true;try{async function update(){return fetch(U+'/auth/v1/user',{method:'PUT',headers:{apikey:K,Authorization:'Bearer '+RECOVERY_SESSION.access_token,'Content-Type':'application/json'},body:JSON.stringify({password:password})})}var response=await update();if(response.status===401&&RECOVERY_SESSION.refresh_token){var newer=await af('/auth/v1/token?grant_type=refresh_token',{refresh_token:RECOVERY_SESSION.refresh_token});RECOVERY_SESSION={access_token:newer.access_token,refresh_token:newer.refresh_token};response=await update()}if(!response.ok)throw Error('Password update failed');localStorage.removeItem('cs');S=null;RECOVERY_SESSION=null;q('pass').value='';backToLogin();q('msg').textContent='تم تغيير كلمة المرور بنجاح. سجّل دخولك بالكلمة الجديدة.';q('msg').className='msg good'}catch(e){feedback('passwordResetMessage','تعذر تغيير كلمة المرور. قد يكون الرابط انتهى؛ جرّب رابط استعادة جديد.',true)}finally{btn.disabled=false}}
-function handleRecoveryOnLoad(){var fragment=new URLSearchParams(location.hash.slice(1));if(fragment.get('type')==='recovery'&&fragment.get('access_token')){var access=fragment.get('access_token'),refresh=fragment.get('refresh_token');history.replaceState(null,'',location.pathname);showNewPassword({access_token:access,refresh_token:refresh});return true}if(fragment.get('error')||fragment.get('error_code')){showForgotPassword();feedback('recoveryMessage','رابط الاستعادة غير صالح أو انتهت مدته. اطلب رسالة جديدة.',true);history.replaceState(null,'',location.pathname);return true}return false}
+async function completeSignupCallback(access,refresh){
+  try{
+    var reply=await fetch(U+'/auth/v1/user',{headers:{apikey:K,Authorization:'Bearer '+access}});
+    if(!reply.ok)throw Error('Cannot verify session');
+    var user=await reply.json();
+    if(!user||!user.id||!user.email_confirmed_at)throw Error('Unconfirmed account');
+    S={access_token:access,refresh_token:refresh||'',user:user,token_type:'bearer'};
+    localStorage.setItem('cs',JSON.stringify(S));
+    localStorage.setItem('last',JSON.stringify({id:user.id,email:user.email}));
+    D.user=user;start()
+  }catch(e){S=null;msg('وصلنا رابط التفعيل، لكن ما قدرنا نكمل الدخول تلقائياً. إذا أكّدت بريدك، أدخل بريدك وكلمة مرورك واضغط «تسجيل الدخول». ما بتحتاج كود دعوة جديد.',1)}
+}
+function handleAuthCallbackOnLoad(){
+  var fragment=new URLSearchParams(location.hash.slice(1)),query=new URLSearchParams(location.search),type=fragment.get('type')||query.get('type'),access=fragment.get('access_token'),refresh=fragment.get('refresh_token');
+  if((type==='signup'||type==='email')&&access){
+    history.replaceState(null,'',location.pathname);
+    msg('تم فتح رابط تأكيد البريد، جارٍ إكمال تسجيل الدخول...',0);
+    completeSignupCallback(access,refresh);return true
+  }
+  if(type==='recovery'&&access){
+    history.replaceState(null,'',location.pathname);
+    showNewPassword({access_token:access,refresh_token:refresh});return true
+  }
+  if(fragment.get('error')||fragment.get('error_code')||query.get('error')){
+    var isRecovery=type==='recovery';
+    history.replaceState(null,'',location.pathname);
+    if(isRecovery){showForgotPassword();feedback('recoveryMessage','رابط الاستعادة غير صالح أو انتهت مدته. اطلب رسالة جديدة.',true)}
+    else msg('رابط تأكيد البريد غير صالح أو انتهت صلاحيته. اكتب بريدك واضغط «إعادة إرسال رسالة تفعيل البريد».',1);
+    return true
+  }
+  return false
+}
 
 
 async function login(){
@@ -200,5 +231,5 @@ function showC(id){current=id;var c=D.customers.find(function(x){return x.id===i
 function reverse(id){var x=D.journal.find(function(e){return e.id===id});if(!x||D.journal.some(function(e){return e.related_id===id}))return;var why=prompt('سبب عكس العملية:');if(why===null)return;var r={id:uid(),owner_id:D.user.id,subject_id:x.subject_id,category:x.category+'_reversal',currency:curOf(x),value:-Number(x.value||0),secondary_value:-Number(x.secondary_value||0),delta:-Number(x.delta||0),note:'عكس: '+(why||'تصحيح'),related_id:x.id,happened_at:iso(),created_at:iso()};D.journal.push(r);ins('journal',r);audit('عكس عملية '+label(x.category),r.id);render();if(current===x.subject_id)showC(current)}
 function range(n){var t=new Date(),f=new Date();if(n)f.setDate(f.getDate()-n+1);q('from').value=day(f);q('to').value=day(t);renderReports()}
 function renderReports(){var f=q('from').value,t=q('to').value,a=D.journal.filter(function(x){var d=day(x.happened_at);return (!f||d>=f)&&(!t||d<=t)}),mu=met(a,'USD'),ms=met(a,'SYP');q('rTrans').innerHTML=pairHtml(mu.tr,ms.tr);q('rColl').innerHTML=pairHtml(mu.co,ms.co);q('rDebt').innerHTML=pairHtml(mu.de,ms.de);q('rExp').innerHTML=pairHtml(mu.ex,ms.ex);q('rCom').innerHTML=pairHtml(mu.cm,ms.cm);q('rNet').innerHTML=pairHtml(mu.net,ms.net)}
-range(30);var last=JSON.parse(localStorage.getItem('last')||'null');if(last&&load(last.id))q('offbtn').classList.remove('hide');var recoveryCallback=handleRecoveryOnLoad();if(!recoveryCallback&&S&&S.user){D.user=S.user;start()}if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(function(){});
+range(30);var last=JSON.parse(localStorage.getItem('last')||'null');if(last&&load(last.id))q('offbtn').classList.remove('hide');var authCallback=handleAuthCallbackOnLoad();if(!authCallback&&S&&S.user){D.user=S.user;start()}if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(function(){});
 </script></body></html>
