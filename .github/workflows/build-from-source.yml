@@ -1,4 +1,4 @@
-name: Build Silver Manager from source
+name: Build Silver Manager from mirrored source
 
 on:
   workflow_dispatch:
@@ -16,36 +16,39 @@ jobs:
     steps:
       - name: Checkout site repository
         uses: actions/checkout@v4
-        with:
-          path: site
-
-      - name: Checkout Silver Manager source
-        uses: actions/checkout@v4
-        with:
-          repository: wwwshadiredan-collab/silver-manage
-          ref: main
-          path: source
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Build verified source
-        working-directory: source
+      - name: Configure production frontend
+        working-directory: app-src
+        run: |
+          cat > .env.production <<'EOF'
+          VITE_SUPABASE_URL=https://hkazzmoeowonqwqpngrp.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_1T_6Vto_nKVrq1bh08Nhaw_Y72kzct1
+          VITE_SYNC_ENDPOINT=https://hkazzmoeowonqwqpngrp.supabase.co/functions/v1/silver-sync
+          VITE_ASSISTANT_ENDPOINT=https://hkazzmoeowonqwqpngrp.supabase.co/functions/v1/silver-assistant
+          EOF
+
+      - name: Build verified mirrored source
+        working-directory: app-src
         run: |
           set -euo pipefail
           npm install --no-audit --no-fund
           npm run build
 
-      - name: Publish build into site repository
+      - name: Publish build into live root
         run: |
           set -euo pipefail
-          find site -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
-          cp -R source/dist/. site/
-          touch site/.nojekyll
+          rm -rf assets
+          rm -f index.html manifest.webmanifest registerSW.js sw.js icon.svg silver-logo.svg .nojekyll
+          rm -f workbox-*.js
+          cp -R app-src/dist/. .
+          touch .nojekyll
 
-          cat > site/registerSW.js <<'EOF'
+          cat > registerSW.js <<'EOF'
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
               try {
@@ -69,15 +72,14 @@ jobs:
           EOF
 
       - name: Commit production build
-        working-directory: site
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -A -- ':!app-src/node_modules' ':!app-src/.env.production'
           if git diff --cached --quiet; then
             echo "No production changes to publish"
             exit 0
           fi
-          git commit -m "deploy: rebuild Silver Manager from source"
+          git commit -m "deploy: rebuild Silver Manager from mirrored source"
           git push origin main
