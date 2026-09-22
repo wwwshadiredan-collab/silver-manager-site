@@ -1,0 +1,17 @@
+{
+  "name": "Cashier ledger",
+  "short_name": "Cashier ledger",
+  "start_url": "/silver-manager-site/cashier/",
+  "scope": "/silver-manager-site/cashier/",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#08111f",
+  "icons": [
+    {
+      "src": "cashier-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
