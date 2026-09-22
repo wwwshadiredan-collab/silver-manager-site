@@ -36,3 +36,9 @@ See `customer-portal.html` for the code-only customer view and `ledger-v2.js` fo
 - UI mock regression passed: mixed USD/SYP/USDT preview and prepare request, offline payment blocking, explicit manual approval, rejected-payment path and no direct browser journal writes.
 - **No real mobile browser/device end-to-end test has been completed**; static checks and mocked UI tests do not establish production readiness.
 
+
+## Real browser smoke workflow (draft branch only)
+
+`.github/workflows/cashier-ledger-draft-smoke.yml` runs `cashier/upgrade/browser-smoke.mjs` in mobile-viewport Chromium using a local static server and fully mocked API, without touching the actual customer's database. The browser test exercises the owner multi-wallet form, no debit while pending, manual confirmation, code-only customer statement, dispute, and offline navigation between the main shell and customer portal. To run locally, install pinned `playwright@1.63.0` then execute `node cashier/upgrade/browser-smoke.mjs`. **This automated workflow must report a successful completed run before claiming browser testing is done.** Even that Chromium run does not replace testing real iPhone Safari and the production-to-staging migration path.
+
+Adversarial 20th SQL check `post_reversal_replay_blocked` reproduced a same-transaction duplicate reversal before the fix, then passed after binding authorization to the exact journal entry and clearing it immediately.
