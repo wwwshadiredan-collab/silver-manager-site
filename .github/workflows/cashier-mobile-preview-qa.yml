@@ -1,0 +1,33 @@
+name: Cashier mobile preview QA
+on:
+  push:
+    branches:
+      - cashier-mobile-preview-20260923
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser testing dependency
+        run: npm install --no-save --no-package-lock playwright@1.63.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Mobile touch-viewport test with synthetic-only local data
+        run: node cashier/upgrade/mobile-preview-smoke.mjs
+      - name: Verify preview is accessible from a mobile browser without GitHub login
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fsSL --retry 4 --retry-delay 2 \
+            'https://raw.githack.com/wwwshadiredan-collab/silver-manager-site/cashier-mobile-preview-20260923/cashier/mobile-test.html' -o /tmp/mobile-test.html
+          grep -q 'نسخة' /tmp/mobile-test.html
+          wc -c /tmp/mobile-test.html
+          curl -fsSL 'https://api.github.com/repos/wwwshadiredan-collab/silver-manager-site' | jq '{private,visibility}'
