@@ -8,7 +8,7 @@ export type SyncSummary = { synced: number; failed: number; pending: number; con
 const endpoint = import.meta.env.VITE_SYNC_ENDPOINT as string | undefined
 
 async function markEntitySynced(entityType:string,entityId:string){
-  const table=entityType==='silverItem'?db.silverItems:entityType==='customer'?db.customers:entityType==='supplier'?db.suppliers:entityType==='expense'?db.expenses:entityType==='sale'?db.sales:entityType==='purchase'?db.purchases:entityType==='buyback'?db.buybacks:entityType==='repair'?db.repairs:entityType==='refining'?db.refining:entityType==='stocktake'?db.stocktakes:null
+  const table=entityType==='silverItem'?db.silverItems:entityType==='customer'?db.customers:entityType==='supplier'?db.suppliers:entityType==='expense'?db.expenses:entityType==='sale'?db.sales:entityType==='purchase'?db.purchases:entityType==='buyback'?db.buybacks:entityType==='repair'?db.repairs:entityType==='refining'?db.refining:entityType==='stocktake'?db.stocktakes:entityType==='cashClosing'?db.cashClosings:null
   if(table) await (table as any).update(entityId,{syncStatus:'synced'})
 }
 
@@ -82,6 +82,14 @@ export async function syncNow(): Promise<SyncSummary> {
         })
         if(stocktakeError) throw stocktakeError
         if(result?.status!=='synced') throw new Error(result?.reason||'تعذر مزامنة الجرد.')
+      }else if(mutation.entityType==='cashClosing'){
+        const p=mutation.payload as any
+        const {data:result,error:closingError}=await supabase.rpc('apply_cash_closing_sync',{
+          p_shop_id:shopId,
+          p_payload:p,
+        })
+        if(closingError) throw closingError
+        if(result?.status!=='synced') throw new Error(result?.reason||'تعذر مزامنة إغلاق الصندوق.')
       }else{
         const response=await fetch(endpoint,{
           method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'Idempotency-Key':mutation.idempotencyKey},
