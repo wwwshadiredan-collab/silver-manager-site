@@ -47,7 +47,7 @@ create policy ledger_cash_accounts_insert on public.ledger_cash_accounts for ins
  with check(owner_id=(select auth.uid()));
 create policy ledger_cash_accounts_update on public.ledger_cash_accounts for update to authenticated
  using(owner_id=(select auth.uid())) with check(owner_id=(select auth.uid()));
-grant select,insert to authenticated on public.ledger_cash_accounts;
+grant select,insert on public.ledger_cash_accounts to authenticated;
 grant update(label,active) on public.ledger_cash_accounts to authenticated;
 
 create table public.ledger_payments(
