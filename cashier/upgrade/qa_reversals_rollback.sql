@@ -73,4 +73,32 @@ begin
  if not v_fail then raise exception 'DISABLED_STAFF_ACCESS_ALLOWED';end if;
  insert into ledger_upgrade_qa values('disabled_staff_access_denied','pass');
 end $qa$;
+-- Verify the no-email portal exposes ONLY this customer’s frozen rate and three actual wallets.
+do $qa$
+declare v_owner uuid; v_customer uuid;v_entry uuid;v_code text;v_statement jsonb;v_line jsonb;v_old_hash text;
+begin
+ select owner_id,customer_id,journal_id into v_owner,v_customer,v_entry
+ from public.ledger_payments where memo='QA three-leg payment' limit 1;
+ select code_hash into v_old_hash from public.ledger_portal_codes
+ where owner_id=v_owner and customer_id=v_customer and revoked_at is null limit 1;
+ perform set_config('request.jwt.claim.sub',v_owner::text,true);
+ v_code:=public.ledger_issue_portal_code(v_customer);
+ if v_old_hash is not null and
+  not exists (select 1 from public.ledger_portal_codes
+       where code_hash=v_old_hash and revoked_at is not null)
+ then raise exception 'PREVIOUS_PORTAL_CODE_STILL_ACTIVE';end if;
+ if (select count(*) from public.ledger_portal_codes
+       where owner_id=v_owner and customer_id=v_customer and revoked_at is null)<>1
+ then raise exception 'MULTIPLE_ACTIVE_PORTAL_CODES';end if;
+ perform set_config('request.jwt.claim.sub','',true);
+ v_statement:=public.ledger_portal_statement(v_code);
+ select e into v_line from jsonb_array_elements(v_statement->'entries') e
+ where e->>'id'=v_entry::text limit 1;
+ if v_line is null or (v_line->'payment_details'->>'fx_syp_per_usd')::numeric<>10000 or
+    jsonb_array_length(v_line->'payment_details'->'legs')<>3
+ then raise exception 'PORTAL_PAYMENT_BREAKDOWN_MISSING';end if;
+ if v_statement->'customer' ? 'email' then raise exception 'PORTAL_EMAIL_LEAK';end if;
+ insert into ledger_upgrade_qa values('portal_frozen_fx_three_wallet_breakdown','pass');
+ insert into ledger_upgrade_qa values('reissuing_code_revokes_previous','pass');
+end $qa$;
 select test,result from ledger_upgrade_qa order by test;
