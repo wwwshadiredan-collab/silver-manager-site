@@ -1,5 +1,5 @@
 import { db } from '../db'
-import type { Buyback, Customer, Expense, Purchase, RefiningBatch, Repair, Sale, SilverItem, Stocktake, Supplier } from '../types'
+import type { Buyback, CashClosing, Customer, Expense, Purchase, RefiningBatch, Repair, Sale, SilverItem, Stocktake, Supplier } from '../types'
 import { getDeviceId, newId } from './ids'
 import { audit, queueMutation } from './mutations'
 import { notifyDataChanged } from './events'
@@ -96,6 +96,15 @@ export async function saveBuyback(entity: Buyback) {
     await db.buybacks.put(entity)
     await queueMutation({entityId:entity.id,entityType:'buyback',operation:'create',payload:entity,version:entity.version})
     await audit(entity.id,'buyback','post',entity)
+  })
+  notifyDataChanged(); return entity
+}
+
+export async function saveCashClosing(entity: CashClosing) {
+  await db.transaction('rw',db.cashClosings,db.outbox,db.audit,async()=>{
+    await db.cashClosings.put(entity)
+    await queueMutation({entityId:entity.id,entityType:'cashClosing',operation:'create',payload:entity,version:entity.version})
+    await audit(entity.id,'cashClosing','close',entity)
   })
   notifyDataChanged(); return entity
 }
