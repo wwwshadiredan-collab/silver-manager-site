@@ -1,0 +1,24 @@
+name: Cashier Ledger draft browser smoke
+on:
+  pull_request:
+    paths:
+      - 'cashier/**'
+      - '.github/workflows/cashier-ledger-draft-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned test dependency
+        run: npm install --no-save --no-package-lock playwright@1.63.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test staged site only using mocked API
+        run: node cashier/upgrade/browser-smoke.mjs
