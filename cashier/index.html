@@ -204,9 +204,63 @@ async function copyInviteMessage(){
   try{await navigator.clipboard.writeText(message);q('inviteStatus').textContent='تم نسخ الرسالة كاملة. الصقها في واتساب للزبون.'}catch(e){q('inviteStatus').textContent='النسخ التلقائي غير متاح على هذا الجهاز. انسخ الكود والرسالة يدوياً.'}
 }
 async function rf(){if(!S||!S.refresh_token)throw Error('انتهت الجلسة');S=await af('/auth/v1/token?grant_type=refresh_token',{refresh_token:S.refresh_token});localStorage.setItem('cs',JSON.stringify(S));D.user=S.user;return S.access_token}
-async function api(tab,opt){opt=opt||{};var tok=S&&S.access_token;if(!tok)throw Error('لا توجد جلسة');async function go(){return fetch(U+'/rest/v1/'+tab+(opt.query||''),{method:opt.method||'GET',headers:{apikey:K,Authorization:'Bearer '+tok,'Content-Type':'application/json',Prefer:'return=representation'},body:opt.body?JSON.stringify(opt.body):undefined})}var r=await go();if(r.status===401){tok=await rf();r=await go()}if(!r.ok)throw Error(await r.text());var t=await r.text();return t?JSON.parse(t):[]}
+async function api(tab,opt){opt=opt||{};var tok=S&&S.access_token;if(!tok)throw Error('لا توجد جلسة');async function go(){return fetch(U+'/rest/v1/'+tab+(opt.query||''),{method:opt.method||'GET',headers:{apikey:K,Authorization:'Bearer '+tok,'Content-Type':'application/json',Prefer:opt.prefer||'return=representation'},body:opt.body?JSON.stringify(opt.body):undefined})}var r=await go();if(r.status===401){tok=await rf();r=await go()}if(!r.ok)throw Error(await r.text());var t=await r.text();return t?JSON.parse(t):[]}
 async function start(){var c=load(D.user.id);if(c){D=c;D.user=S.user}if(!Array.isArray(D.out))D.out=[];show();render();if(navigator.onLine)sync()}function show(){q('auth').classList.add('hide');q('app').classList.remove('hide');q('user').textContent=D.user.email||'أوفلاين';net();checkInviteAdmin()}function net(){var s=navigator.onLine?'متصل':'أوفلاين • محفوظ محلياً';if(navigator.onLine&&D.out.length)s+=' • '+D.out.length+' بانتظار المزامنة';if(navigator.onLine&&syncError)s+=' • خطأ: '+syncError;q('status').textContent=s}window.addEventListener('online',function(){syncError='';net();sync();checkInviteAdmin()});window.addEventListener('offline',net);
-function ins(tab,row){D.out.push({tab:tab,row:row});save();if(navigator.onLine)setTimeout(sync,50)}async function sync(){if(!navigator.onLine||!D.user)return;syncError='';net();var p=D.out.slice(),pri={customers:0,journal:1,audit_events:2};p.sort(function(a,b){return (pri[a.tab]??9)-(pri[b.tab]??9)});for(var i=0;i<p.length;i++){var x=p[i];try{await api(x.tab,{method:'POST',body:x.row});D.out=D.out.filter(function(y){return !(y.tab===x.tab&&y.row&&x.row&&y.row.id===x.row.id)});save()}catch(e){if(!syncError)syncError=(e&&e.message?e.message:'تعذر إرسال سجل').replace(/\s+/g,' ').slice(0,90)}}if(!D.out.length){try{var id=D.user.id,r=await Promise.all([api('customers',{query:'?select=*&user_id=eq.'+id+'&order=created_at.asc'}),api('journal',{query:'?select=*&owner_id=eq.'+id+'&order=happened_at.asc'}),api('audit_events',{query:'?select=*&owner_id=eq.'+id+'&order=created_at.desc&limit=200'})]);D.customers=r[0];D.journal=r[1];D.audit=r[2]}catch(e){syncError=(e&&e.message?e.message:'تعذر تحديث البيانات').replace(/\s+/g,' ').slice(0,90)}}save();render();net()}
+function ins(tab,row){D.out.push({tab:tab,row:row});save();if(navigator.onLine)setTimeout(sync,50)}
+var syncRunning=false;
+async function sync(){
+  // Multiple new records schedule nearby sync calls. Only one may flush this device's queue at a time.
+  if(syncRunning||!navigator.onLine||!D.user)return;
+  syncRunning=true;
+  var syncingUserId=D.user.id;
+  syncError='';net();
+  try{
+    var pending=D.out.slice(),priority={customers:0,journal:1,audit_events:2};
+    pending.sort(function(a,b){return (priority[a.tab]??9)-(priority[b.tab]??9)});
+    for(var i=0;i<pending.length;i++){
+      if(!navigator.onLine||!D.user||D.user.id!==syncingUserId)return;
+      var item=pending[i];
+      // Another tab/retry may already have uploaded this exact id. Never insert a second
+      // financial event or overwrite a row; only ignore a duplicate primary key.
+      if(!D.out.some(function(y){return y.tab===item.tab&&y.row&&item.row&&y.row.id===item.row.id}))continue;
+      try{
+        await api(item.tab,{
+          method:'POST',query:'?on_conflict=id',body:item.row,
+          prefer:'resolution=ignore-duplicates,return=minimal'
+        });
+        if(!D.user||D.user.id!==syncingUserId)return;
+        D.out=D.out.filter(function(y){return !(y.tab===item.tab&&y.row&&item.row&&y.row.id===item.row.id)});
+        save();
+      }catch(e){
+        // Keep all failed records locally, including if the connection drops after server commit.
+        if(!syncError){
+          var reason=String(e&&e.message||'');
+          syncError=/23505|duplicate key/i.test(reason)
+            ?'تعارض في سجل محفوظ؛ العملية بقيت على الجهاز. أعد فتح التطبيق للمزامنة.'
+            :navigator.onLine?'تعذر مزامنة بعض العمليات؛ محفوظة على الجهاز. تحقق من الاتصال.':'بانتظار عودة الإنترنت';
+        }
+      }
+    }
+    if(!D.user||D.user.id!==syncingUserId)return;
+    if(!D.out.length&&navigator.onLine){
+      try{
+        var rows=await Promise.all([
+          api('customers',{query:'?select=*&user_id=eq.'+syncingUserId+'&order=created_at.asc'}),
+          api('journal',{query:'?select=*&owner_id=eq.'+syncingUserId+'&order=happened_at.asc'}),
+          api('audit_events',{query:'?select=*&owner_id=eq.'+syncingUserId+'&order=created_at.desc&limit=200'})
+        ]);
+        if(!D.user||D.user.id!==syncingUserId)return;
+        D.customers=rows[0];D.journal=rows[1];D.audit=rows[2];
+      }catch(e){syncError='تعذر تحديث البيانات من الخادم؛ بياناتك المحلية محفوظة.'}
+    }
+    if(D.user&&D.user.id===syncingUserId){save();render();net()}
+  }finally{
+    syncRunning=false;
+    // A new operation might have arrived while a fetch was in flight. Flush it next.
+    // Do not spin endlessly when the server/network returns an actual error.
+    if(!syncError&&D.user&&D.user.id===syncingUserId&&navigator.onLine&&D.out.length)setTimeout(sync,50)
+  }
+}
 function audit(label,id){var r={id:uid(),owner_id:D.user.id,label:label,ref_type:'entry',ref_id:id,payload:{},created_at:iso()};D.audit.unshift(r);ins('audit_events',r)}
 function curOf(x){return x&&x.currency==='SYP'?'SYP':'USD'}
 function debt(id,c){return D.journal.filter(function(x){return x.subject_id===id&&curOf(x)===c}).reduce(function(s,x){return s+Number(x.delta||0)},0)}
