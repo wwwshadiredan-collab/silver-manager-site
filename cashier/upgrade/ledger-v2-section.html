@@ -25,7 +25,7 @@
 <section id="v2StaffControls" class="v2-section"><h3>صلاحيات الموظفين</h3><p class="small muted">الموظف يحتاج حساباً مفعلّاً. المشاهد يقرأ فقط، والكاشير يسجّل ويؤكد الدفعات، والمدير يراجع الاعتراضات ويغلق الصندوق.</p>
 <div class="v2-row"><div class="f"><label for="v2StaffEmail">بريد حساب الموظف</label><input id="v2StaffEmail" type="email" dir="ltr" placeholder="employee@example.com"></div>
 <div class="f"><label for="v2StaffRole">الصلاحية</label><select id="v2StaffRole"><option value="viewer">مشاهد</option><option value="cashier">كاشير</option><option value="manager">مدير</option></select></div>
-<button class="btn pri" onclick="v2AssignStaff()">حفظ الصلاحية</button></div></section>
+<button class="btn pri" onclick="v2AssignStaff()">حفظ الصلاحية</button> <button class="btn sec" onclick="v2DisableStaff()">تعطيل الموظف</button></div></section>
 <div id="v2AdminSections" class="v2-split"><section class="v2-section"><h3>اعتراضات الزبائن</h3><div id="v2Disputes" class="v2-list"></div></section>
 <section class="v2-section"><h3>سجل التدقيق من الخادم</h3><div id="v2Audit" class="v2-list"></div></section></div>
 </section>
