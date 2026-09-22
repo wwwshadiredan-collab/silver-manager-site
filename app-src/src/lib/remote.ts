@@ -1,5 +1,5 @@
 import { db } from '../db'
-import type { Buyback, Customer, Expense, Purchase, RefiningBatch, Repair, Sale, SilverItem, Stocktake, Supplier } from '../types'
+import type { Buyback, CashClosing, Customer, Expense, Purchase, RefiningBatch, Repair, Sale, SilverItem, Stocktake, Supplier } from '../types'
 import { supabase, currentShopId } from './supabase'
 import { notifyDataChanged } from './events'
 
@@ -16,7 +16,7 @@ export async function pullFromServer(){
   const pending=await pendingEntityIds()
   let pulled=0
 
-  const [itemsRes,customersRes,suppliersRes,expensesRes,salesRes,purchasesRes,buybacksRes,repairsRes,refiningRes,stocktakesRes]=await Promise.all([
+  const [itemsRes,customersRes,suppliersRes,expensesRes,salesRes,purchasesRes,buybacksRes,repairsRes,refiningRes,stocktakesRes,cashClosingsRes]=await Promise.all([
     supabase.from('inventory_items').select('*').eq('shop_id',shopId),
     supabase.from('customers').select('*').eq('shop_id',shopId),
     supabase.from('suppliers').select('*').eq('shop_id',shopId),
@@ -27,8 +27,9 @@ export async function pullFromServer(){
     supabase.from('repairs').select('*').eq('shop_id',shopId).order('updated_at',{ascending:false}).limit(500),
     supabase.from('refining_batches').select('*').eq('shop_id',shopId).order('updated_at',{ascending:false}).limit(500),
     supabase.from('stocktakes').select('*,stocktake_items(*)').eq('shop_id',shopId).order('completed_at',{ascending:false}).limit(100),
+    supabase.from('cash_closings').select('*').eq('shop_id',shopId).order('closed_at',{ascending:false}).limit(100),
   ])
-  for(const r of [itemsRes,customersRes,suppliersRes,expensesRes,salesRes,purchasesRes,buybacksRes,repairsRes,refiningRes,stocktakesRes]) if(r.error) throw r.error
+  for(const r of [itemsRes,customersRes,suppliersRes,expensesRes,salesRes,purchasesRes,buybacksRes,repairsRes,refiningRes,stocktakesRes,cashClosingsRes]) if(r.error) throw r.error
 
   for(const x of itemsRes.data||[]){
     if(pending.has(x.id)) continue
@@ -101,6 +102,21 @@ export async function pullFromServer(){
     lines.forEach((l:any,i:number)=>{const item=localItems[i] as any;if(item){l.sku=item.sku;l.name=item.name}})
     const entity:Stocktake={id:x.id,reference:x.reference,stocktakeStatus:'completed',startedAt:iso(x.started_at),completedAt:iso(x.completed_at),notes:x.notes||undefined,lines,createdAt:iso(x.created_at),updatedAt:iso(x.updated_at),version:Number(x.version??1),archived:false,syncStatus:'synced',deviceId:x.device_id||undefined}
     await db.stocktakes.put(entity); pulled++
+  }
+
+  for(const x of cashClosingsRes.data||[]){
+    if(pending.has(x.id)) continue
+    const entity:CashClosing={
+      id:x.id,businessDate:String(x.business_date||'').slice(0,10),
+      openingUsd:String(x.opening_usd??0),openingSyp:String(x.opening_syp??0),
+      salesUsd:String(x.sales_usd??0),salesSyp:String(x.sales_syp??0),cashOutUsd:String(x.cash_out_usd??0),
+      expectedUsd:String(x.expected_usd??0),expectedSyp:String(x.expected_syp??0),
+      countedUsd:String(x.counted_usd??0),countedSyp:String(x.counted_syp??0),
+      differenceUsd:String(x.difference_usd??0),differenceSyp:String(x.difference_syp??0),
+      notes:x.notes||undefined,closedAt:iso(x.closed_at),
+      createdAt:iso(x.created_at),updatedAt:iso(x.closed_at),version:1,archived:false,syncStatus:'synced',deviceId:x.device_id||undefined,
+    }
+    await db.cashClosings.put(entity); pulled++
   }
 
   localStorage.setItem('silver-manager-last-pull',new Date().toISOString())
