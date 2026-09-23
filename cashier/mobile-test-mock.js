@@ -56,6 +56,12 @@
   }
   window.CASHIER_MOBILE_DEMO=true;
   window.cashierQaRole=()=>activeRole;
+  window.qaRefreshStaffStatus=()=>{
+    const el=document.getElementById('qa-staff-status');
+    if(!el)return;
+    const viewer=state.ledger_staff_members.find(x=>x.owner_id===owner&&x.user_id===staffUsers.viewer.id);
+    el.textContent='حالة المشاهد التجريبي: '+(viewer?.active?'✅ فعّال':'🔒 معطّل — ممنوع الدخول للمنشأة');
+  };
   window.switchCashierMobileRole=function(role){
     if(role!=='owner'&&!Object.hasOwn(staffUsers,role))return;
     sessionStorage.setItem('cashier_mobile_qa_role',role);
@@ -70,6 +76,7 @@
   window.addEventListener('DOMContentLoaded',()=>{
     const banner=document.querySelector('#qa-role-badge');
     if(banner)banner.textContent='الدور التجريبي الحالي: '+selected.label;
+    window.qaRefreshStaffStatus();
     if(selected.id!==owner){
       document.querySelectorAll('aside .nav:not([data-v="ledgerV2"]), nav.bottom button[data-v]:not([data-v="ledgerV2"]), .fab').forEach(el=>el.classList.add('hide'));
       const note=document.querySelector('#qa-owner-only-note');
