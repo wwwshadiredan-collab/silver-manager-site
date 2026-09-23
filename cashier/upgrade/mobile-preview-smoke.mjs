@@ -248,12 +248,23 @@ try{
  await page.locator('#qaRoleOwner').click();
  await page.waitForFunction(owner=>V2.role==='owner'&&V2.owner===owner&&V2.accounts.length===3,ownerId);
  await page.waitForFunction(()=>document.querySelector('#v2StaffControls')&&!document.querySelector('#v2StaffControls').classList.contains('hide'));
- await page.locator('#v2StaffEmail').fill('viewer@cashier.invalid');
+ await page.locator('#qaFillViewer').click();
+ assert.equal(await page.locator('#v2StaffEmail').inputValue(),'viewer@cashier.invalid');
  await page.getByRole('button',{name:'تعطيل الموظف'}).click();
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}')
    .ledger_staff_members?.some(m=>m.user_id==='70000000-0000-4000-8000-000000000007'&&m.active===false));
  const ownerAudit=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
  assert.equal(ownerAudit.ledger_audit.at(-1).new_value.active,false);
+ assert.match(await page.locator('#qa-staff-status').innerText(),/معطّل/);
+ const auditCount=ownerAudit.ledger_audit.length;
+ // Duplicate tap must report already disabled without adding another audit event.
+ await page.locator('#qaFillViewer').click();
+ await page.getByRole('button',{name:'تعطيل الموظف'}).click();
+ await page.waitForFunction(()=>document.querySelector('#v2Message')?.textContent?.includes('الموظف معطّل من قبل'));
+ const secondDisable=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(secondDisable.ledger_audit.length,auditCount);
+ assert.equal(secondDisable.ledger_staff_members.find(m=>m.user_id==='70000000-0000-4000-8000-000000000007').active,false);
+ console.log('PASS repeated iPhone disable is idempotent; visible status remains revoked and no duplicate audit event');
  await page.locator('#qaRoleViewer').click();
  await page.waitForFunction(()=>window.cashierQaRole?.()==='viewer'&&document.querySelector('#qa-owner-only-note')?.textContent?.includes('معطّل'));
  await page.waitForFunction(()=>V2.userId==='70000000-0000-4000-8000-000000000007'&&V2.owner===V2.userId);
