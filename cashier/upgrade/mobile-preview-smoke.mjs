@@ -196,7 +196,15 @@ try{
   },{name,body});
  }
  await page.locator('#qaRoleViewer').click();
- await page.waitForFunction(owner=>V2.role==='viewer'&&V2.owner===owner&&V2.accounts.length===3,ownerId);
+ await page.waitForTimeout(800);
+ console.log('DEBUG_VIEWER',JSON.stringify(await page.evaluate(()=>({
+  selectedRole:window.cashierQaRole?.(),uid:S?.user?.id,shownUser:D?.user?.id,
+  v2:{owner:V2.owner,role:V2.role,userId:V2.userId,workspaces:V2.workspaces,
+    accounts:V2.accounts.length,customers:V2.customers.length,loading:V2.loading},
+  message:q('v2Message')?.textContent,roleLabel:q('qa-role-badge')?.textContent,
+  staff:JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}').ledger_staff_members
+ }))));
+ await page.waitForFunction(owner=>V2.role==='viewer'&&V2.owner===owner&&V2.accounts.length===3,ownerId,{timeout:7000});
  assert.equal(await page.locator('#v2MoneyControls').isVisible(),false);
  assert.equal(await page.locator('#v2ReconcileControls').isVisible(),false);
  assert.equal((await qaRpc('ledger_cash_balances',{p_owner:ownerId,p_local_day:null})).status,200);
