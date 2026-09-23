@@ -1,7 +1,7 @@
 /* Cashier Ledger extension on the EXISTING app, loaded after its legacy inline script.
    Financial RPCs intentionally require an active online session: no speculative/offline debits. */
 var V2={userId:null,owner:null,role:'owner',workspaces:[],accounts:[],customers:[],payments:[],
- balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,initialized:false};
+ balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,reloadRequested:false,initialized:false};
 function v2Esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function v2Fmt(n,c){return Number(n||0).toLocaleString('ar-SY',{maximumFractionDigits:c==='SYP'?2:6})+' '+(c==='SYP'?'ل.س':c)}
 function v2Date(s){return s?new Date(s).toLocaleString('ar-SY'):'—'}
@@ -20,7 +20,7 @@ function v2AccountName(id){var x=V2.accounts.find(function(a){return a.id===id})
 function v2CustomerName(id){var x=V2.customers.find(function(a){return a.id===id});return x?x.name:'—'}
 function v2Field(){return '<option value="">اختار الصندوق أو المحفظة</option>'+V2.accounts.filter(function(a){return a.active}).map(function(a){return '<option value="'+v2Esc(a.id)+'">'+v2Esc(a.label)+' · '+v2Esc(a.currency)+'</option>'}).join('')}
 function v2SetWorkspace(){V2.owner=q('v2Owner').value;V2.role=(V2.workspaces.find(function(w){return w.id===V2.owner})||{}).role||'viewer';v2Load(true)}
-function v2Clear(){V2={userId:null,owner:null,role:'owner',workspaces:[],accounts:[],customers:[],payments:[],balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,initialized:false};['v2Accounts','v2Pending','v2History','v2Disputes','v2Audit','v2Closings','v2Legs','v2CustomerCodes'].forEach(function(id){var el=q(id);if(el)el.innerHTML=''});if(q('v2IssuedCode'))q('v2IssuedCode').value=''}
+function v2Clear(){V2={userId:null,owner:null,role:'owner',workspaces:[],accounts:[],customers:[],payments:[],balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,reloadRequested:false,initialized:false};['v2Accounts','v2Pending','v2History','v2Disputes','v2Audit','v2Closings','v2Legs','v2CustomerCodes'].forEach(function(id){var el=q(id);if(el)el.innerHTML=''});if(q('v2IssuedCode'))q('v2IssuedCode').value=''}
 function v2Install(){
  if(V2.initialized)return;V2.initialized=true;
  var oldView=window.view;
@@ -32,7 +32,7 @@ function v2Install(){
 async function v2Load(force){
  if(!D.user){v2Warn('سجل الدخول أولاً',true);return}
  if(!navigator.onLine){v2Warn('الصندوق المتعدد يحتاج اتصالاً بالإنترنت. بيانات الديون القديمة ما زالت متاحة من القوائم الأصلية.',true);return}
- if(V2.loading)return;
+ if(V2.loading){if(force)V2.reloadRequested=true;return}
  V2.loading=true;v2Warn('جارِ تحديث البيانات...',false);
  var sessionUser=D.user.id;
  try{
@@ -70,7 +70,15 @@ async function v2Load(force){
   v2Render();
   v2Warn('البيانات محدّثة. الدفعات الجديدة ما بتنخصم إلا بعد التأكيد اليدوي.',false);
  }catch(e){if(/42501|401|403|not.authorized|permission/i.test(v2Error(e)))v2Clear();v2Warn('تعذّر تحميل التحديث الجديد: '+v2Error(e),true)}
- finally{V2.loading=false}
+ finally{
+  V2.loading=false;
+  // A payment may arrive while an earlier refresh is still running.
+  // Never silently discard its follow-up refresh or leave the pending list stale.
+  if(V2.reloadRequested){
+    V2.reloadRequested=false;
+    setTimeout(function(){if(D.user)v2Load(true)},0);
+  }
+ }
 }
 function v2Render(){
  var accounts=V2.accounts;
