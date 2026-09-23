@@ -13,6 +13,7 @@ begin
   where id<>v_owner and id<>coalesce(v_foreign_owner,gen_random_uuid()) and email is not null limit 1;
  if v_owner is null or v_customer is null or v_foreign_owner is null or v_staff is null
  then raise exception 'QA_STAFF_FIXTURES_MISSING';end if;
+ perform set_config('qa.staff_owner',v_owner::text,true);
  v_original_journal:=(select count(*) from public.journal);
  perform set_config('request.jwt.claim.sub',v_owner::text,true);
  perform set_config('request.jwt.claim.role','authenticated',true);
@@ -95,9 +96,9 @@ begin
  insert into qa_staff_permissions values('cross_tenant_workspace_denied','pass');
 end $qa$;
 set local role authenticated;
-select set_config('request.jwt.claim.sub',(select user_id::text from public.customers order by created_at limit 1),true);
+select set_config('request.jwt.claim.sub',current_setting('qa.staff_owner'),true);
 do $qa$
-declare v_owner uuid:=current_setting('request.jwt.claim.sub')::uuid;v_staff uuid;
+declare v_owner uuid:=current_setting('qa.staff_owner')::uuid;v_staff uuid;
  v_email text;v_count integer;
 begin
  select s.user_id into v_staff from public.ledger_staff_members s
