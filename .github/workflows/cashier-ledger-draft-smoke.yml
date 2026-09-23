@@ -22,3 +22,5 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Test staged site only using mocked API
         run: node cashier/upgrade/browser-smoke.mjs
+      - name: Legacy offline queue, lost ACK and idempotent retry (isolated browser)
+        run: node cashier/upgrade/offline-sync-smoke.mjs
