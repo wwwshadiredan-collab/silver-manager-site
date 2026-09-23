@@ -289,11 +289,12 @@
      if(pathname==='/rest/v1/rpc/ledger_disable_staff'){
        if(!checkOwner(owner))return response({message:'OWNER_ONLY'},403);
        const user=Object.values(staffUsers).find(u=>u.email===String(req.p_email).toLowerCase());
-       const row=user&&state.ledger_staff_members.find(x=>x.user_id===user.id&&x.active);
-       if(!row)return response({message:'STAFF_NOT_FOUND'},400);
+       const row=user&&state.ledger_staff_members.find(x=>x.owner_id===owner&&x.user_id===user.id);
+       if(!row)return response({message:'STAFF_MEMBERSHIP_NOT_FOUND'},400);
+       if(!row.active)return response({active:false,already_disabled:true});
        row.active=false;state.ledger_audit.push({id:id(),owner_id:owner,actor_id:owner,
         entity_type:'ledger_staff_members',action:'UPDATE',created_at:now(),new_value:{user_id:user.id,active:false}});
-       save();return response({active:false});
+       save();return response({active:false,already_disabled:false});
      }
      const table=pathname.replace('/rest/v1/','');
      const map={customers:'customers',journal:'journal',audit_events:'audit_events',ledger_audit:'ledger_audit',
