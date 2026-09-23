@@ -130,8 +130,8 @@
   }
   function checkOwner(o){return o===owner&&selected.id===owner}
   function roleFor(o){
+    if(o===selected.id)return 'owner';
     if(o!==owner)return null;
-    if(selected.id===owner)return 'owner';
     const m=state.ledger_staff_members.find(x=>x.owner_id===o&&x.user_id===selected.id&&x.active);
     return m?m.role:null;
   }
@@ -178,10 +178,11 @@
        if(!canWork(req.p_owner,'cashier'))return response({message:'CASHIER_PERMISSION_REQUIRED'},403);
        const existing=state.ledger_payments.find(p=>p.request_id===req.p_request_id);
        if(existing)return response({id:existing.id,state:existing.state,settled_amount:existing.settled_amount,duplicate:true});
+       if(!state.customers.some(c=>c.id===req.p_customer&&c.user_id===req.p_owner))return response({message:'FOREIGN_CUSTOMER'},403);
        const fx=Number(req.p_fx_syp_per_usd), rate=Number(req.p_usdt_usd_rate),legs=req.p_legs;
        if(!(fx>0&&rate>0)||!Array.isArray(legs)||legs.length<1||legs.length>8)return response({message:'INVALID_PAYMENT_REQUEST'},400);
        let usd=0;
-       for(const leg of legs){const a=state.accounts.find(x=>x.id===leg.account_id),amt=Number(leg.amount);
+       for(const leg of legs){const a=state.accounts.find(x=>x.id===leg.account_id&&x.owner_id===req.p_owner),amt=Number(leg.amount);
          if(!a||!(amt>0))return response({message:'INVALID_ACCOUNT_OR_AMOUNT'},400);
          usd+=(a.currency==='USD'?amt:a.currency==='SYP'?amt/fx:amt*rate);
        }
@@ -221,7 +222,7 @@
      }
      if(pathname==='/rest/v1/rpc/ledger_cash_balances'){
        if(!canWork(req.p_owner,'read'))return response({message:'NOT_AUTHORIZED'},403);
-       return response(balances());
+       return response(balances().filter(a=>state.accounts.some(x=>x.id===a.account_id&&x.owner_id===req.p_owner)));
      }
      if(pathname==='/rest/v1/rpc/ledger_close_day'){
        if(!canWork(req.p_owner,'manager'))return response({message:'MANAGER_PERMISSION_REQUIRED'},403);
@@ -297,9 +298,7 @@
      const rows=state[map[table]];
      if(method==='GET'){
        if(table==='ledger_staff_members'){
-         const filtered=selected.id===owner?
-           rows.filter(x=>x.owner_id===owner):
-           rows.filter(x=>x.user_id===selected.id&&x.active);
+         const filtered=rows.filter(x=>x.user_id===selected.id&&x.active);
          return response(filtered);
        }
        const u=new URL(url);
