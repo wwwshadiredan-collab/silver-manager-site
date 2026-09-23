@@ -109,12 +109,18 @@ begin
  if v_owner is null then raise exception 'OWNER_ONLY' using errcode='42501';end if;
  select id into v_user from auth.users where lower(email)=lower(trim(p_email));
  if v_user is null then raise exception 'STAFF_NOT_FOUND' using errcode='22023';end if;
+ -- Repeated disable is idempotent: a double tap must not produce a false failure.
+ perform 1 from public.ledger_staff_members
+   where owner_id=v_owner and user_id=v_user for update;
+ if not found then raise exception 'STAFF_MEMBERSHIP_NOT_FOUND' using errcode='22023';end if;
+ if exists(select 1 from public.ledger_staff_members
+   where owner_id=v_owner and user_id=v_user and not active)
+ then return jsonb_build_object('active',false,'already_disabled',true);end if;
  update public.ledger_staff_members set active=false
    where owner_id=v_owner and user_id=v_user and active;
- if not found then raise exception 'STAFF_MEMBERSHIP_NOT_FOUND' using errcode='22023';end if;
  insert into public.ledger_audit(owner_id,actor_id,entity_type,entity_id,action,new_value)
  values(v_owner,v_owner,'ledger_staff_members',v_user,'UPDATE',jsonb_build_object('active',false));
- return jsonb_build_object('active',false);
+ return jsonb_build_object('active',false,'already_disabled',false);
 end $f$;
 
 revoke all on function public.ledger_reverse_payment(uuid,uuid,text) from public,anon,authenticated;
