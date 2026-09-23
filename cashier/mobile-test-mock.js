@@ -99,6 +99,12 @@
      const url=typeof input==='string'?input:input.url;
      if(url.includes('.supabase.co'))throw new Error('DEMO_BLOCKED_REAL_SUPABASE');
      if(!url.startsWith(apiRoot))return nativeFetch(input,options);
+     // A second preview tab may have closed a wallet after this tab loaded.
+     // Read the current synthetic state before EVERY mock request to avoid stale-tab balances.
+     try{
+       const latest=JSON.parse(localStorage.getItem(key)||'null');
+       if(latest&&latest.version===1)state=latest;
+     }catch(_){}
      const pathname=url.slice(apiRoot.length).split('?')[0],method=(options&&options.method||'GET').toUpperCase();
      let req={};try{req=JSON.parse(options&&options.body||'{}')}catch(_){}
      if(pathname==='/rest/v1/rpc/is_cashier_invite_admin')return response(false);
