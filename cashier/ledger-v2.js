@@ -256,10 +256,12 @@ async function v2DisableStaff(){
  try{v2Online();if(V2.role!=='owner')throw Error('المالك فقط يمكنه تعطيل الموظف');
   var email=q('v2StaffEmail').value.trim();
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw Error('أدخل بريد الموظف لتعطيله');
-  if(!confirm('هل بدك تعطّل صلاحيات هالموظف فوراً؟'))return;
-  await api('rpc/ledger_disable_staff',{method:'POST',body:{p_email:email}});
+  if(!confirm('هل بدك تعطّل صلاحيات هالموظف فوراً؟')){v2Warn('أُلغيت عملية التعطيل ولم تتغير صلاحيات الموظف.',true);return}
+  var result=await api('rpc/ledger_disable_staff',{method:'POST',body:{p_email:email}});
   q('v2StaffEmail').value='';
-  v2Warn('تم تعطيل عضوية الموظف. لازم يسجّل خروج من الجلسات المفتوحة.',false);
+  await v2Load(true);
+  v2Warn(result.already_disabled?'الموظف معطّل من قبل؛ ما عنده أي وصول لبيانات المنشأة.':'تم تعطيل الموظف وسحب صلاحياته على المنشأة. جرّب تبديل الدور للمشاهد للتأكد.',false);
+  if(typeof window.qaRefreshStaffStatus==='function')window.qaRefreshStaffStatus();
  }catch(e){v2Warn(v2Error(e),true)}
 }
 async function v2AssignStaff(){
