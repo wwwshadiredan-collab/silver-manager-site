@@ -4,6 +4,12 @@
   const owner='10000000-0000-4000-8000-000000000001';
   const customer='20000000-0000-4000-8000-000000000002';
   const altCustomer='20000000-0000-4000-8000-000000000003';
+  const staffUsers={
+    viewer:{id:'70000000-0000-4000-8000-000000000007',email:'viewer@cashier.invalid',label:'مشاهد'},
+    cashier:{id:'80000000-0000-4000-8000-000000000008',email:'cashier@cashier.invalid',label:'كاشير'},
+    manager:{id:'90000000-0000-4000-8000-000000000009',email:'manager@cashier.invalid',label:'مدير'}
+  };
+  const activeRole=sessionStorage.getItem('cashier_mobile_qa_role')||'owner';
   const key='cashier_mobile_qa_synthetic_v1';
   const apiRoot='https://cashier-preview.invalid';
   function id(){return crypto.randomUUID()}
@@ -17,7 +23,9 @@
       ],
       journal:[{id:id(),owner_id:owner,subject_id:customer,category:'charge',currency:'USD',value:100,secondary_value:0,delta:100,note:'دين تجريبي أولي',related_id:null,happened_at:now(),created_at:now()}],
       audit_events:[],ledger_audit:[],ledger_payments:[],ledger_payment_parts:[],ledger_cash_movements:[],ledger_day_closings:[],
-      ledger_staff_members:[],ledger_portal_disputes:[],
+      ledger_staff_members:Object.entries(staffUsers).map(([role,user])=>({
+        owner_id:owner,user_id:user.id,role,active:true,created_at:now()
+      })),ledger_portal_disputes:[],
       accounts:[
        {id:'40000000-0000-4000-8000-000000000004',owner_id:owner,label:'دولار نقدي تجريبي',channel:'cash',currency:'USD',active:true,created_at:now()},
        {id:'50000000-0000-4000-8000-000000000005',owner_id:owner,label:'شام كاش تجريبي',channel:'sham_cash',currency:'SYP',active:true,created_at:now()},
@@ -29,17 +37,44 @@
   let state;
   try{state=JSON.parse(localStorage.getItem(key)||'null')}catch(_){state=null}
   if(!state||state.version!==1)state=seed();
+  // Upgrade prior synthetic data in place without erasing the customer's previous QA transactions.
+  for(const [role,user] of Object.entries(staffUsers)){
+    if(!state.ledger_staff_members.some(member=>member.user_id===user.id))
+      state.ledger_staff_members.push({owner_id:owner,user_id:user.id,role,active:true,created_at:now()});
+  }
   function save(){localStorage.setItem(key,JSON.stringify(state))}
   save();
-  const session={access_token:'qa-only-demo-token',refresh_token:'qa-only-demo-refresh',user:{id:owner,email:'demo@cashier.invalid'}};
+  const selected=activeRole==='owner'?{id:owner,email:'demo@cashier.invalid',label:'مالك'}:(staffUsers[activeRole]||{id:owner,email:'demo@cashier.invalid',label:'مالك'});
+  const session={access_token:'qa-only-demo-token',refresh_token:'qa-only-demo-refresh',user:{id:selected.id,email:selected.email}};
   if(location.pathname.endsWith('mobile-test.html')){
     localStorage.setItem('cs',JSON.stringify(session));
-    localStorage.setItem('last',JSON.stringify({id:owner,email:session.user.email}));
-    const locallyCached={user:session.user,customers:state.customers,journal:state.journal,audit:state.audit_events,out:[]};
-    localStorage.setItem('cc_'+owner,JSON.stringify(locallyCached));
+    localStorage.setItem('last',JSON.stringify({id:session.user.id,email:session.user.email}));
+    const isOwner=selected.id===owner;
+    const locallyCached={user:session.user,customers:isOwner?state.customers:[],journal:isOwner?state.journal:[],
+      audit:isOwner?state.audit_events:[],out:[]};
+    localStorage.setItem('cc_'+selected.id,JSON.stringify(locallyCached));
   }
   window.CASHIER_MOBILE_DEMO=true;
-  window.resetCashierMobileDemo=function(){localStorage.removeItem(key);localStorage.removeItem('cc_'+owner);location.reload()};
+  window.cashierQaRole=()=>activeRole;
+  window.switchCashierMobileRole=function(role){
+    if(role!=='owner'&&!Object.hasOwn(staffUsers,role))return;
+    sessionStorage.setItem('cashier_mobile_qa_role',role);
+    location.reload();
+  };
+  window.resetCashierMobileDemo=function(){
+    localStorage.removeItem(key);
+    for(const x of [owner,...Object.values(staffUsers).map(u=>u.id)])localStorage.removeItem('cc_'+x);
+    sessionStorage.setItem('cashier_mobile_qa_role','owner');
+    location.reload();
+  };
+  window.addEventListener('DOMContentLoaded',()=>{
+    const banner=document.querySelector('#qa-role-badge');
+    if(banner)banner.textContent='الدور التجريبي الحالي: '+selected.label;
+    if(selected.id!==owner){
+      document.querySelectorAll('aside .nav:not([data-v="ledgerV2"]), nav.bottom button[data-v]:not([data-v="ledgerV2"]), .fab').forEach(el=>el.classList.add('hide'));
+      document.querySelector('#qa-owner-only-note')?.classList.remove('hide');
+    }
+  });
   function response(obj,status=200){return new Response(status===204?'':JSON.stringify(obj),{status,headers:{'Content-Type':'application/json'}})}
   function money(x,c){return +(Math.round((x+Number.EPSILON)*100)/100).toFixed(2)}
   // The real ledger's daily lock is tied to the Damascus calendar day, not the device timezone.
@@ -93,7 +128,20 @@
       entries,disputes:state.ledger_portal_disputes.filter(d=>d.customer_id===customer).map(d=>({
         id:d.id,journal_id:d.journal_id,status:d.status,reason:d.reason,response:d.owner_note,created_at:d.created_at}))};
   }
-  function checkOwner(o){return o===owner}
+  function checkOwner(o){return o===owner&&selected.id===owner}
+  function roleFor(o){
+    if(o!==owner)return null;
+    if(selected.id===owner)return 'owner';
+    const m=state.ledger_staff_members.find(x=>x.owner_id===o&&x.user_id===selected.id&&x.active);
+    return m?m.role:null;
+  }
+  function canWork(o,level='read'){
+    const r=roleFor(o);
+    return r==='owner'||(level==='read'&&!!r)||
+      (level==='cashier'&&(r==='cashier'||r==='manager'))||
+      (level==='manager'&&r==='manager');
+  }
+  function permission(o,level){return canWork(o,level)?null:response({message:'STAFF_PERMISSION_DENIED'},403)}
   const nativeFetch=window.fetch.bind(window);
   window.fetch=async function(input,options){
      const url=typeof input==='string'?input:input.url;
@@ -109,6 +157,7 @@
      let req={};try{req=JSON.parse(options&&options.body||'{}')}catch(_){}
      if(pathname==='/rest/v1/rpc/is_cashier_invite_admin')return response(false);
      if(pathname==='/rest/v1/rpc/ledger_issue_portal_code'){
+       if(!checkOwner(owner))return response({message:'OWNER_ONLY'},403);
        if(!state.customers.some(c=>c.id===req.p_customer_id))return response({message:'CUSTOMER_NOT_FOUND'},403);
        state.portalCode='LC-'+id().replace(/-/g,'').toUpperCase();
        save();return response(state.portalCode)
@@ -126,7 +175,7 @@
        state.ledger_portal_disputes.unshift(dispute);save();return response(dispute.id)
      }
      if(pathname==='/rest/v1/rpc/ledger_prepare_payment'){
-       if(!checkOwner(req.p_owner))return response({message:'NOT_ALLOWED'},403);
+       if(!canWork(req.p_owner,'cashier'))return response({message:'CASHIER_PERMISSION_REQUIRED'},403);
        const existing=state.ledger_payments.find(p=>p.request_id===req.p_request_id);
        if(existing)return response({id:existing.id,state:existing.state,settled_amount:existing.settled_amount,duplicate:true});
        const fx=Number(req.p_fx_syp_per_usd), rate=Number(req.p_usdt_usd_rate),legs=req.p_legs;
@@ -148,6 +197,7 @@
        save();return response({id:payment.id,settled_amount:settled,currency:req.p_debt_currency,state:'pending'})
      }
      if(pathname==='/rest/v1/rpc/ledger_confirm_payment'){
+       if(!canWork(req.p_owner,'cashier'))return response({message:'CASHIER_PERMISSION_REQUIRED'},403);
        const p=state.ledger_payments.find(x=>x.id===req.p_payment&&req.p_owner===owner);
        if(!p)return response({message:'PAYMENT_NOT_FOUND'},404);
        if(p.state==='confirmed')return response({state:'confirmed',journal_id:p.journal_id,duplicate:true});
@@ -164,13 +214,17 @@
        return response({state:'confirmed',journal_id:journalId,duplicate:false})
      }
      if(pathname==='/rest/v1/rpc/ledger_reject_payment'){
+       if(!canWork(req.p_owner,'cashier'))return response({message:'CASHIER_PERMISSION_REQUIRED'},403);
        const p=state.ledger_payments.find(x=>x.id===req.p_payment&&req.p_owner===owner);
        if(!p||p.state!=='pending')return response({message:'PAYMENT_NOT_PENDING'},400);
        p.state='rejected';p.memo+=' | مرفوض: '+req.p_reason;save();return response({state:'rejected'})
      }
-     if(pathname==='/rest/v1/rpc/ledger_cash_balances')return response(balances());
+     if(pathname==='/rest/v1/rpc/ledger_cash_balances'){
+       if(!canWork(req.p_owner,'read'))return response({message:'NOT_AUTHORIZED'},403);
+       return response(balances());
+     }
      if(pathname==='/rest/v1/rpc/ledger_close_day'){
-       if(!checkOwner(req.p_owner))return response({message:'NOT_ALLOWED'},403);
+       if(!canWork(req.p_owner,'manager'))return response({message:'MANAGER_PERMISSION_REQUIRED'},403);
        const a=state.accounts.find(x=>x.id===req.p_account&&x.owner_id===req.p_owner);
        if(!a)return response({message:'ACCOUNT_NOT_FOUND'},400);
        if(!(Number(req.p_counted)>=0)||!Number.isFinite(Number(req.p_counted))||
@@ -185,7 +239,7 @@
        return response({id:close.id,expected,counted:close.counted_balance,difference:close.difference})
      }
      if(pathname==='/rest/v1/rpc/ledger_add_cash_movement'){
-       if(!checkOwner(req.p_owner))return response({message:'NOT_ALLOWED'},403);
+       if(!canWork(req.p_owner,'manager'))return response({message:'MANAGER_PERMISSION_REQUIRED'},403);
        if(!state.accounts.some(a=>a.id===req.p_account&&a.owner_id===owner&&a.active))
          return response({message:'CASH_ACCOUNT_NOT_FOUND'},403);
        const amount=Number(req.p_amount);
@@ -200,6 +254,7 @@
        state.ledger_cash_movements.push(movement);save();return response(movement.id)
      }
      if(pathname==='/rest/v1/rpc/ledger_reverse_payment'){
+       if(!canWork(req.p_owner,'manager'))return response({message:'MANAGER_PERMISSION_REQUIRED'},403);
        const p=state.ledger_payments.find(x=>x.id===req.p_payment);
        if(!p||p.state!=='confirmed')return response({message:'PAYMENT_NOT_CONFIRMED'},400);
        if(state.ledger_payment_parts.some(leg=>leg.payment_id===p.id&&closedToday(leg.account_id)))
@@ -213,8 +268,26 @@
          note:'عكس: '+req.p_reason,created_by:owner,created_at:now()}));
        p.state='reversed';save();return response({state:'reversed',journal_id:reversed.id,duplicate:false})
      }
-     if(pathname==='/rest/v1/rpc/ledger_assign_staff')return response({status:'active',role:req.p_role});
-     if(pathname==='/rest/v1/rpc/ledger_disable_staff')return response({active:false});
+     if(pathname==='/rest/v1/rpc/ledger_assign_staff'){
+       if(!checkOwner(owner))return response({message:'OWNER_ONLY'},403);
+       const role=req.p_role,user=Object.values(staffUsers).find(u=>u.email===String(req.p_email).toLowerCase());
+       if(!user||!['viewer','cashier','manager'].includes(role))return response({message:'STAFF_NOT_FOUND'},400);
+       let row=state.ledger_staff_members.find(x=>x.user_id===user.id);
+       if(row){row.active=true;row.role=role}
+       else state.ledger_staff_members.push({owner_id:owner,user_id:user.id,role,active:true,created_at:now()});
+       state.ledger_audit.push({id:id(),owner_id:owner,actor_id:owner,entity_type:'ledger_staff_members',action:'UPDATE',
+         created_at:now(),new_value:{user_id:user.id,role,active:true}});
+       save();return response({status:'active',role});
+     }
+     if(pathname==='/rest/v1/rpc/ledger_disable_staff'){
+       if(!checkOwner(owner))return response({message:'OWNER_ONLY'},403);
+       const user=Object.values(staffUsers).find(u=>u.email===String(req.p_email).toLowerCase());
+       const row=user&&state.ledger_staff_members.find(x=>x.user_id===user.id&&x.active);
+       if(!row)return response({message:'STAFF_NOT_FOUND'},400);
+       row.active=false;state.ledger_audit.push({id:id(),owner_id:owner,actor_id:owner,
+        entity_type:'ledger_staff_members',action:'UPDATE',created_at:now(),new_value:{user_id:user.id,active:false}});
+       save();return response({active:false});
+     }
      const table=pathname.replace('/rest/v1/','');
      const map={customers:'customers',journal:'journal',audit_events:'audit_events',ledger_audit:'ledger_audit',
        ledger_staff_members:'ledger_staff_members',ledger_payments:'ledger_payments',
@@ -222,13 +295,29 @@
        ledger_day_closings:'ledger_day_closings'};
      if(!map[table])return response({message:'DEMO_NOT_IMPLEMENTED: '+pathname},404);
      const rows=state[map[table]];
-     if(method==='GET')return response(table==='ledger_portal_disputes'?rows.filter(x=>x.owner_id===owner):rows);
+     if(method==='GET'){
+       if(table==='ledger_staff_members'){
+         const filtered=selected.id===owner?
+           rows.filter(x=>x.owner_id===owner):
+           rows.filter(x=>x.user_id===selected.id&&x.active);
+         return response(filtered);
+       }
+       const u=new URL(url);
+       const qOwner=(u.searchParams.get('owner_id')||'').replace(/^eq\./,'');
+       const target=qOwner||owner;
+       if(!canWork(target,'read'))return response([]);
+       if(table==='ledger_audit'&&!canWork(target,'manager'))return response([]);
+       if(table==='ledger_portal_disputes'&&!canWork(target,'manager'))return response([]);
+       return response(rows.filter(x=>(x.owner_id||x.user_id)===target));
+     }
      if(method==='POST'){
+       if(!checkOwner(owner))return response({message:'OWNER_ONLY'},403);
        const items=Array.isArray(req)?req:[req];
        for(const item of items)if(!rows.some(x=>x.id===item.id))rows.push(item);
        save();return response(items,201)
      }
      if(method==='PATCH'&&table==='ledger_portal_disputes'){
+        if(!canWork(owner,'manager'))return response({message:'MANAGER_PERMISSION_REQUIRED'},403);
         const u=new URL(url);const disputeId=(u.searchParams.get('id')||'').replace(/^eq\./,'');
         const record=rows.find(x=>x.id===disputeId);
         if(record)Object.assign(record,req);save();return response(record?[record]:[]);
