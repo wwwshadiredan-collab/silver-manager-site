@@ -50,8 +50,16 @@ try{
  await page.selectOption('#v2Legs .v2-leg:nth-child(3) select','60000000-0000-4000-8000-000000000006');
  await page.fill('#v2Legs .v2-leg:nth-child(3) input','10');
  await page.locator('#v2PrepareBtn').click();
- await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}').ledger_payments?.some(p=>p.state==='pending'));
- await page.waitForFunction(()=>document.querySelector('#v2Pending')?.textContent?.includes('بانتظار التأكيد'));
+ await page.waitForTimeout(400);
+ console.log('DEBUG_ROLE_PREPARE',JSON.stringify(await page.evaluate(()=>({
+  role:window.cashierQaRole?.(),session:S?.user?.id,message:q('v2Message')?.textContent,
+  owner:V2.owner,v2Role:V2.role,pending:V2.payments?.length,
+  display:q('v2Pending')?.textContent,state:JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}').ledger_payments,
+  customers:V2.customers?.length,accounts:V2.accounts?.length,loading:V2.loading,
+  requestId:V2.requestId
+ }))));
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}').ledger_payments?.some(p=>p.state==='pending'),null,{timeout:7000});
+ await page.waitForFunction(()=>document.querySelector('#v2Pending')?.textContent?.includes('بانتظار التأكيد'),null,{timeout:7000});
  const staged=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
  assert.equal(staged.ledger_payments[0].settled_amount,60);
  assert.equal(staged.ledger_payments[0].state,'pending');
