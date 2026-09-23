@@ -60,6 +60,12 @@ begin
  then raise exception 'PAYMENT_NOT_CONFIRMED' using errcode='22023';end if;
  perform 1 from public.customers where id=v_payment.customer_id and user_id=p_owner for update;
  if not found then raise exception 'CUSTOMER_MISSING' using errcode='42501';end if;
+ -- Serialize reversals with daily closing; never reverse cash on a closed wallet.
+ perform 1 from public.ledger_cash_accounts a
+  where a.owner_id=p_owner and a.id in
+    (select part.account_id from public.ledger_payment_parts part
+     where part.owner_id=p_owner and part.payment_id=p_payment)
+  order by a.id for update;
  if exists(select 1 from public.ledger_day_closings cl
    join public.ledger_payment_parts part on part.owner_id=p_owner and part.account_id=cl.account_id
    where part.payment_id=p_payment and cl.owner_id=p_owner and cl.local_day=v_today)
