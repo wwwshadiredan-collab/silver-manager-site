@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08111f">
+<link rel="icon" href="./cashier-icon-192.png"><link rel="manifest" href="./manifest.webmanifest">
+<title>كشف حساب الزبون · Cashier Ledger</title>
+<style>
+:root{--bg:#07111f;--card:#0e1a2d;--line:#22324d;--text:#f5f7fb;--muted:#a2b0c4;--green:#39d98a;--amber:#f3b84b;--red:#ff8c9c}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(#06101d,#091425);color:var(--text);font-family:system-ui,Tahoma,Arial,sans-serif}
+main{max-width:830px;margin:auto;padding:16px 13px 70px}
+header{display:flex;align-items:center;gap:13px;margin-bottom:18px}
+header img{width:56px;height:56px;border-radius:14px}
+header h1{font-size:22px;margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:17px;padding:16px;margin:12px 0}
+.muted{color:var(--muted);font-size:13px}
+input,textarea{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;color:var(--text);background:#081426}
+textarea{min-height:100px}
+button{cursor:pointer;border:0;border-radius:12px;padding:10px 14px;background:#13213a;color:var(--text);font:inherit;font-weight:700}
+button.primary{background:var(--green);color:#04160d}
+button:disabled{opacity:.55;cursor:wait}
+.hide{display:none}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.balance{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.balance>div{background:#081426;padding:12px;border:1px solid var(--line);border-radius:12px}
+.balance b{font-size:22px}
+.entry{border-bottom:1px solid var(--line);padding:11px 0}
+.entry:last-child{border:0}
+.entry b{overflow-wrap:anywhere}
+.muted,.entry{overflow-wrap:anywhere}
+.positive{color:var(--green)}.negative{color:var(--red)}
+#status{min-height:24px;margin:10px 0}
+label{display:block;font-size:13px;color:var(--muted);margin:11px 0 5px}
+footer{color:var(--muted);font-size:12px}
+@media(max-width:450px){.balance b{font-size:18px}.card{padding:12px}}
+</style>
+</head>
+<body>
+<main>
+<header><img alt="Cashier Ledger" src="./cashier-icon-192.png"><div><h1>كشف حساب الزبون</h1><div class="muted">Cashier Ledger · الدخول بالكود الخاص فقط، بدون بريد إلكتروني</div></div></header>
+<section class="card" id="portalLogin">
+ <label for="portalCode">كود كشف الحساب الذي أعطاك ياه صاحب الكاشير</label>
+ <input id="portalCode" type="password" dir="ltr" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="LC-…" maxlength="35">
+ <p class="muted">هاي الصفحة خاصة بحسابك فقط. كود دعوة الموظف CL- مختلف عن كود كشف الحساب LC-.</p>
+ <button class="primary" id="portalEnter" onclick="portalLogin()">عرض كشف حسابي</button>
+ <p id="loginStatus" role="status" aria-live="polite"></p>
+</section>
+<section id="statement" class="hide">
+ <section class="card"><div class="row" style="justify-content:space-between">
+ <h2 id="customerName" style="margin:4px 0"></h2><button onclick="portalLogout()">خروج ومسح الكود</button></div>
+ <div class="muted">الرصيد المستحق بحسب العمليات المسجلة عند الكاشير. الاعتراض لا يغيّر المبلغ حتى تتم مراجعته.</div>
+ <div class="balance" style="margin-top:12px">
+ <div><div class="muted">دين الدولار</div><b id="balanceUSD">0 USD</b></div>
+ <div><div class="muted">دين السوري</div><b id="balanceSYP">0 ل.س</b></div>
+ </div><button style="margin-top:11px" onclick="portalRefresh()">تحديث الكشف</button>
+ </section>
+ <section class="card"><h2>حركات حسابي</h2><div class="muted">آخر 200 حركة، الرصيد أعلاه يشمل كافة الحركات.</div><div id="entryList"></div></section>
+ <section class="card"><h2>اعتراضاتي</h2><div class="muted">اختار «اعتراض» جنب العملية المطلوبة؛ الرد يظهر هون بعد مراجعة الإدارة.</div><div id="disputeList"></div></section>
+</section>
+<div id="status" role="status" aria-live="polite"></div>
+<footer>لا تشارك كود كشف حسابك مع أي شخص. إذا ضاع، اطلب كوداً جديداً من صاحب الكاشير لإلغاء القديم.</footer>
+</main>
+<script>
+/* This page belongs to the EXISTING Cashier Ledger folder; it only calls tightly scoped RPCs. */
+var portalURL='https://yfiwexcpkrnfoujgxlcv.supabase.co';
+var portalKey='sb_publishable_hrS7WRJK3Lb7OjB-lMuKCA_UlSysRlH';
+var portalState={code:'',entries:[],disputes:[]};
+function byId(id){return document.getElementById(id)}
+function escapeText(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function displayMoney(n,c){return Number(n||0).toLocaleString('ar-SY',{maximumFractionDigits:c==='USDT'?6:2})+(c==='SYP'?' ل.س':c==='USDT'?' USDT':' USD')}
+function dateFmt(d){return d?new Date(d).toLocaleString('ar-SY'):'—'}
+function statusMsg(s,error){byId('status').textContent=s||'';byId('status').style.color=error?'#ff8c9c':'#39d98a'}
+function failure(){statusMsg('تعذّر فتح الحساب. تحقق من الكود أو اطلب كوداً جديداً من صاحب الكاشير.',true)}
+async function portalRPC(name,args){
+ var response=await fetch(portalURL+'/rest/v1/rpc/'+name,{
+ method:'POST',headers:{'apikey':portalKey,'Content-Type':'application/json'},
+ body:JSON.stringify(args)
+ });
+ if(!response.ok)throw Error('طلب غير صالح');
+ return response.json()
+}
+function labelFor(category){return {charge:'تحويل',receipt:'دفعة',charge_reversal:'عكس تحويل',
+ receipt_reversal:'عكس دفعة',expense:'مصروف'}[category]||category||'حركة'}
+async function portalLogin(){
+ var code=String(byId('portalCode').value||'').trim().toUpperCase(),btn=byId('portalEnter');
+ if(!/^LC-[0-9A-F]{32}$/.test(code)){byId('loginStatus').textContent='الكود غير صالح. تأكد إنه يبدأ بـ LC-.';return}
+ btn.disabled=true;byId('loginStatus').textContent='';
+ try{
+  var result=await portalRPC('ledger_portal_statement',{p_code:code});
+  portalState.code=code;sessionStorage.setItem('ledger_portal_code',code);
+  byId('portalCode').value='';renderStatement(result);
+  byId('portalLogin').classList.add('hide');byId('statement').classList.remove('hide');
+  statusMsg('تم عرض حسابك الخاص بنجاح.',false)
+ }catch(e){byId('loginStatus').textContent='الكود غير صحيح أو انتهت صلاحيته. اطلب من صاحب الكاشير إعادة إصداره.';failure()}
+ finally{btn.disabled=false}
+}
+function renderStatement(result){
+ portalState.entries=Array.isArray(result.entries)?result.entries:[];
+ portalState.disputes=Array.isArray(result.disputes)?result.disputes:[];
+ byId('customerName').textContent=result.customer&&result.customer.name||'حسابي';
+ byId('balanceUSD').textContent=displayMoney(result.balance&&result.balance.USD,'USD');
+ byId('balanceSYP').textContent=displayMoney(result.balance&&result.balance.SYP,'SYP');
+ byId('entryList').innerHTML=portalState.entries.map(function(e){
+  var disputed=portalState.disputes.some(function(d){return d.journal_id===e.id});
+  var note=String(e.note||'').replace(/^دفعة متعددة القنوات #[0-9a-f-]{36}\s*\|\s*/i,'').trim();
+  var detail=e.payment_details;
+  var detailHtml=detail?
+     '<div class="muted" style="margin-top:5px">سعر الدولار المثبّت: '+escapeText(detail.fx_syp_per_usd)+
+       ' ل.س · سعر USDT بالدولار: '+escapeText(detail.usdt_usd_rate)+'</div>'+
+     (Array.isArray(detail.legs)?detail.legs.map(function(leg){
+       return '<div class="muted">↳ '+escapeText(leg.wallet)+' ('+escapeText(leg.method)+') : '+
+          displayMoney(leg.amount,leg.currency)+'</div>'
+     }).join(''):''):'';
+
+  return '<div class="entry"><div class="row" style="justify-content:space-between"><b>'+escapeText(labelFor(e.category))+
+   '</b><b class="'+(Number(e.balance_change)<0?'positive':'negative')+'">'+displayMoney(e.amount,e.currency)+'</b></div>'+
+   '<div class="muted">'+dateFmt(e.date)+(note?' · '+escapeText(note):'')+'</div>'+detailHtml+
+   '<div class="muted">تغيّر الدين: '+displayMoney(e.balance_change,e.currency)+'</div>'+
+   (disputed?'<span class="muted">تم تقديم اعتراض على هاي الحركة</span>':
+   '<button style="margin-top:6px" onclick="portalDispute(\''+escapeText(e.id)+'\')">اعتراض على العملية</button>')+'</div>'
+ }).join('')||'<p class="muted">ما في حركات مسجّلة.</p>';
+ byId('disputeList').innerHTML=portalState.disputes.map(function(d){
+  return '<div class="entry"><b>'+escapeText(d.status)+'</b>'+
+   '<div class="muted">'+dateFmt(d.created_at)+'</div><div>'+escapeText(d.reason)+'</div>'+
+   (d.response?'<div style="margin-top:6px">رد الإدارة: '+escapeText(d.response)+'</div>':'')+'</div>'
+ }).join('')||'<p class="muted">ما عندك اعتراضات حالياً.</p>'
+}
+async function portalRefresh(){
+ if(!portalState.code)return;
+ try{var result=await portalRPC('ledger_portal_statement',{p_code:portalState.code});
+  renderStatement(result);statusMsg('تحدّث كشف الحساب.',false)
+ }catch(e){failure()}
+}
+async function portalDispute(entryId){
+ var ownEntry=portalState.entries.find(function(e){return e.id===entryId});
+ if(!ownEntry){failure();return}
+ var reason=prompt('اكتب سبب اعتراضك على هذه العملية (8 أحرف على الأقل)');
+ if(reason===null)return;
+ if(reason.trim().length<8||reason.length>1000){statusMsg('سبب الاعتراض لازم يكون بين 8 و1000 حرف.',true);return}
+ try{await portalRPC('ledger_portal_dispute',{p_code:portalState.code,p_journal_id:entryId,p_reason:reason});
+  await portalRefresh();statusMsg('وصل اعتراضك للإدارة. العملية الأصلية ما تغيّرت.',false)
+ }catch(e){statusMsg('تعذّر إرسال الاعتراض أو أنه مسجّل من قبل.',true)}
+}
+function portalLogout(){
+ portalState={code:'',entries:[],disputes:[]};sessionStorage.removeItem('ledger_portal_code');
+ byId('statement').classList.add('hide');byId('portalLogin').classList.remove('hide');
+ byId('portalCode').value='';byId('entryList').innerHTML='';byId('disputeList').innerHTML='';
+ statusMsg('تم مسح كود الجلسة.',false)
+}
+(function(){
+ var saved=sessionStorage.getItem('ledger_portal_code');
+ if(saved){byId('portalCode').value=saved;portalLogin()}
+})();
+</script>
+</body></html>

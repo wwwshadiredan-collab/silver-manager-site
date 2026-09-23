@@ -1,0 +1,70 @@
+name: Cashier Ledger isolated PostgreSQL upgrade, audit and restore
+on:
+  pull_request:
+    paths:
+      - 'cashier/upgrade/**'
+      - '.github/workflows/cashier-staged-db-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: qa_only_password
+          POSTGRES_DB: cashier_qa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cashier_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: qa_only_password
+      PGDATABASE: cashier_qa
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact legacy schema fixture, back up, migrate in ONE transaction, and compare fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg() {
+            docker run --rm -i --network host \
+              -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE \
+              -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP:/backup" \
+              postgres:17 "$@"
+          }
+          pg psql -v ON_ERROR_STOP=1 -f /src/cashier/upgrade/qa_synthetic_legacy_fixture.sql
+          ORIGINAL=$(pg psql -v ON_ERROR_STOP=1 -At -f /src/cashier/upgrade/qa_legacy_fingerprint.sql | tail -n 1)
+          echo "Synthetic legacy baseline fingerprint: $ORIGINAL"
+          pg pg_dump --format=custom --no-owner --no-acl --file=/backup/cashier_legacy.dump
+          pg psql -v ON_ERROR_STOP=1 --single-transaction \
+            -f /src/cashier/upgrade/20260923_portal_and_audit.sql \
+            -f /src/cashier/upgrade/20260923_multicurrency_cashbox.sql \
+            -f /src/cashier/upgrade/20260923_safety_hardening.sql
+          AFTER=$(pg psql -v ON_ERROR_STOP=1 -At -f /src/cashier/upgrade/qa_legacy_fingerprint.sql | tail -n 1)
+          test "$ORIGINAL" = "$AFTER"
+          echo "PASS all five legacy-table fingerprints unchanged after three staged migrations"
+
+          # Run every QA SQL suite against the ISOLATED, fully migrated PostgreSQL 17 DB.
+          { echo 'BEGIN;'; cat cashier/upgrade/qa_transaction_rollback.sql cashier/upgrade/qa_reversals_rollback.sql; echo 'ROLLBACK;'; } | pg psql -v ON_ERROR_STOP=1
+          { echo 'BEGIN;'; cat cashier/upgrade/qa_rls_rollback.sql; echo 'ROLLBACK;'; } | pg psql -v ON_ERROR_STOP=1
+          { echo 'BEGIN;'; cat cashier/upgrade/qa_staff_permissions_rollback.sql; echo 'ROLLBACK;'; } | pg psql -v ON_ERROR_STOP=1
+          CHECK=$(pg psql -v ON_ERROR_STOP=1 -At -f /src/cashier/upgrade/qa_legacy_fingerprint.sql | tail -n 1)
+          test "$ORIGINAL" = "$CHECK"
+          echo "PASS rollback suites left all legacy records unchanged"
+
+          pg psql -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE cashier_restored;'
+          pg pg_restore --no-owner --no-acl --dbname=cashier_restored /backup/cashier_legacy.dump
+          RESTORED=$(pg psql -v ON_ERROR_STOP=1 -d cashier_restored -At -f /src/cashier/upgrade/qa_legacy_fingerprint.sql | tail -n 1)
+          test "$ORIGINAL" = "$RESTORED"
+          echo "PASS separate-db restore reproduces full fake legacy snapshot exactly"
