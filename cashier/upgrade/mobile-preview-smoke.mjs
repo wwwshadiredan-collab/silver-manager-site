@@ -25,7 +25,8 @@ const context=await browser.newContext({viewport:{width:390,height:844},isMobile
 const page=await context.newPage(),errors=[],realCalls=[];
 page.on('pageerror',err=>errors.push(err.message));
 page.on('request',req=>{if(req.url().includes('.supabase.co'))realCalls.push(req.url())});
-page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'المبلغ غير صحيح':undefined));
+let qaPrompts=[];
+page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?(qaPrompts.length?qaPrompts.shift():'المبلغ غير صحيح'):undefined));
 try{
  await page.goto(base+'mobile-test.html',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>document.querySelector('#clist')?.textContent?.includes('أحمد التجريبي'));
@@ -61,6 +62,34 @@ try{
  assert.equal(accepted.ledger_payments[0].state,'confirmed');
  assert.equal(accepted.journal.find(j=>j.category==='receipt').delta,-60);
  console.log('PASS explicit manual approval deducts debt once, all three wallets recorded');
+ // Regression: closing a wallet must prohibit later movement AND preserve the original day-end snapshot.
+ const today=await page.evaluate(()=>{const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Damascus',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const part=t=>parts.find(p=>p.type===t).value;return part('year')+'-'+part('month')+'-'+part('day')});
+ const cash=page.locator('#v2Accounts .v2-item').filter({hasText:'دولار نقدي تجريبي'});
+ qaPrompts=[today,'29','اختبار إغلاق الصندوق'];
+ await cash.getByRole('button',{name:'تسوية اليوم'}).click();
+ await page.waitForFunction(()=>document.querySelector('#v2Closings')?.textContent?.includes('دولار نقدي تجريبي'));
+ const closed=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ const latestClose=closed.ledger_day_closings.find(x=>x.account_id==='40000000-0000-4000-8000-000000000004');
+ assert.equal(latestClose.expected_balance,30);
+ assert.equal(latestClose.counted_balance,29);
+ assert.equal(latestClose.difference,-1);
+ const movementsBefore=closed.ledger_cash_movements.length;
+ const balancesBefore=await page.locator('#v2Accounts').innerText();
+ qaPrompts=['10','deposit','اختبار إيداع مرفوض بعد الإغلاق'];
+ await cash.getByRole('button',{name:'حركة صندوق'}).click();
+ await page.waitForFunction(()=>document.querySelector('#v2Message')?.textContent?.includes('الصندوق مُغلق اليوم'));
+ const afterBlocked=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(afterBlocked.ledger_cash_movements.length,movementsBefore,'mock must reject after-close +10 USD');
+ assert.equal(afterBlocked.ledger_day_closings.length,closed.ledger_day_closings.length);
+ assert.deepEqual(afterBlocked.ledger_day_closings[0],latestClose);
+ assert.equal(await page.locator('#v2Accounts').innerText(),balancesBefore,'shown balances cannot change after rejection');
+ console.log('PASS after-close +10 USD deposit rejected by mock RPC; cash balance, previous close and history unchanged');
+ qaPrompts=[today,'29','اختبار التسوية المكررة'];
+ await cash.getByRole('button',{name:'تسوية اليوم'}).click();
+ await page.waitForFunction(()=>document.querySelector('#v2Message')?.textContent?.includes('تسويته مسبقاً'));
+ const afterDuplicate=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(afterDuplicate.ledger_day_closings.length,closed.ledger_day_closings.length);
+ console.log('PASS second daily close is refused and the first variance stays immutable');
  await page.goto(base+'mobile-test-customer.html',{waitUntil:'domcontentloaded'});
  await page.fill('#portalCode','LC-'+'A'.repeat(32));
  await page.locator('#portalEnter').click();
