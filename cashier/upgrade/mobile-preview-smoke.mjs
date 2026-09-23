@@ -173,6 +173,94 @@ try{
  assert.deepEqual(realCalls,[]);
  assert.deepEqual(errors,[]);
  console.log('PASS mock isolation: no production Supabase requests and zero uncaught errors');
+
+ // Staff-preview regression. Distinct synthetic sessions are switched inside the same
+ // browser tab, and each role is checked in both the UI and the mock API.
+ const ownerId='10000000-0000-4000-8000-000000000001';
+ const qaAccount='40000000-0000-4000-8000-000000000004';
+ const qaCustomer='20000000-0000-4000-8000-000000000002';
+ async function qaRpc(name,body){
+  return page.evaluate(async({name,body})=>{
+   const res=await fetch('https://cashier-preview.invalid/rest/v1/rpc/'+name,{
+     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
+   });
+   return {status:res.status,body:await res.json()};
+  },{name,body});
+ }
+ await page.locator('#qaRoleViewer').click();
+ await page.waitForFunction(owner=>V2.role==='viewer'&&V2.owner===owner&&V2.accounts.length===3,ownerId);
+ assert.equal(await page.locator('#v2MoneyControls').isVisible(),false);
+ assert.equal(await page.locator('#v2ReconcileControls').isVisible(),false);
+ assert.equal((await qaRpc('ledger_cash_balances',{p_owner:ownerId,p_local_day:null})).status,200);
+ let attempt=await qaRpc('ledger_prepare_payment',{
+  p_owner:ownerId,p_customer:qaCustomer,p_debt_currency:'USD',
+  p_fx_syp_per_usd:10000,p_usdt_usd_rate:1,
+  p_legs:[{account_id:qaAccount,amount:2}],p_note:'viewer forbidden',p_request_id:'11111111-1111-4111-8111-111111111111'
+ });
+ assert.equal(attempt.status,403);
+ console.log('PASS viewer can read assigned accounts but cannot prepare a mixed payment or settle a cashbox');
+
+ await page.locator('#qaRoleCashier').click();
+ await page.waitForFunction(owner=>V2.role==='cashier'&&V2.owner===owner&&V2.accounts.length===3,ownerId);
+ assert.equal(await page.locator('#v2MoneyControls').isVisible(),true);
+ assert.equal(await page.locator('#v2ReconcileControls').isVisible(),false);
+ const created=await qaRpc('ledger_prepare_payment',{
+  p_owner:ownerId,p_customer:qaCustomer,p_debt_currency:'USD',
+  p_fx_syp_per_usd:10000,p_usdt_usd_rate:1,p_legs:[{account_id:qaAccount,amount:2}],
+  p_note:'cashier permitted',p_request_id:'22222222-2222-4222-8222-222222222222'
+ });
+ assert.equal(created.status,200);
+ assert.equal(created.body.state,'pending');
+ const approved=await qaRpc('ledger_confirm_payment',{p_payment:created.body.id,p_owner:ownerId});
+ assert.equal(approved.status,200);
+ assert.equal(approved.body.state,'confirmed');
+ const deniedClose=await qaRpc('ledger_close_day',{p_owner:ownerId,p_account:qaAccount,
+    p_day:today,p_counted:2,p_note:'cashier forbidden'});
+ assert.equal(deniedClose.status,403);
+ console.log('PASS cashier can prepare and confirm payment but cannot close a cashbox');
+
+ await page.locator('#qaRoleManager').click();
+ await page.waitForFunction(owner=>V2.role==='manager'&&V2.owner===owner&&V2.accounts.length===3,ownerId);
+ assert.equal(await page.locator('#v2ReconcileControls').isVisible(),true);
+ assert.equal(await page.locator('#v2StaffControls').isVisible(),false);
+ const managerClose=await qaRpc('ledger_close_day',{p_owner:ownerId,p_account:qaAccount,
+    p_day:today,p_counted:2,p_note:'manager permitted'});
+ assert.equal(managerClose.status,200);
+ assert.equal(managerClose.body.difference,0);
+ console.log('PASS manager may settle a cashbox but may not assign staff');
+
+ await page.locator('#qaRoleOwner').click();
+ await page.waitForFunction(owner=>V2.role==='owner'&&V2.owner===owner&&V2.accounts.length===3,ownerId);
+ await page.waitForFunction(()=>document.querySelector('#v2StaffControls')&&!document.querySelector('#v2StaffControls').classList.contains('hide'));
+ await page.locator('#v2StaffEmail').fill('viewer@cashier.invalid');
+ await page.getByRole('button',{name:'تعطيل الموظف'}).click();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}')
+   .ledger_staff_members?.some(m=>m.user_id==='70000000-0000-4000-8000-000000000007'&&m.active===false));
+ const ownerAudit=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(ownerAudit.ledger_audit.at(-1).new_value.active,false);
+ await page.locator('#qaRoleViewer').click();
+ await page.waitForFunction(()=>window.cashierQaRole?.()==='viewer'&&document.querySelector('#qa-owner-only-note')?.textContent?.includes('معطّل'));
+ await page.waitForFunction(()=>V2.userId==='70000000-0000-4000-8000-000000000007'&&V2.owner===V2.userId);
+ assert.equal(await page.locator('#v2Accounts .v2-item').count(),0);
+ assert.equal((await qaRpc('ledger_cash_balances',{p_owner:ownerId,p_local_day:null})).status,403);
+ const deniedAfterDisable=await qaRpc('ledger_prepare_payment',{
+  p_owner:ownerId,p_customer:qaCustomer,p_debt_currency:'USD',p_fx_syp_per_usd:10000,
+  p_usdt_usd_rate:1,p_legs:[{account_id:qaAccount,amount:2}],p_note:'revoked forbidden',
+  p_request_id:'33333333-3333-4333-8333-333333333333'
+ });
+ assert.equal(deniedAfterDisable.status,403);
+ console.log('PASS revoked staff session cannot view original workspace, obtain balance or prepare payment');
+
+ await page.locator('#qaRoleOwner').click();
+ await page.waitForFunction(owner=>V2.role==='owner'&&V2.owner===owner&&V2.accounts.length===3,ownerId);
+ await page.locator('#v2StaffEmail').fill('viewer@cashier.invalid');
+ await page.locator('#v2StaffRole').selectOption('viewer');
+ await page.getByRole('button',{name:'حفظ الصلاحية'}).click();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}')
+   .ledger_staff_members?.some(m=>m.user_id==='70000000-0000-4000-8000-000000000007'&&m.active===true));
+ assert.deepEqual(realCalls,[]);
+ assert.deepEqual(errors,[]);
+ console.log('PASS owner can reactivate viewer; staff QA caused zero production requests and zero uncaught errors');
 }finally{
  await context.close();await browser.close();await new Promise(done=>server.close(done));
 }
