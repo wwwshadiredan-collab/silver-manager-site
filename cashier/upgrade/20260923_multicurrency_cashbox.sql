@@ -258,6 +258,12 @@ begin
  -- Serialize concurrent confirmations for the same customer.
  perform 1 from public.customers where id=v_payment.customer_id and user_id=p_owner for update;
  if not found then raise exception 'CUSTOMER_NOT_FOUND' using errcode='42501'; end if;
+ -- Lock all affected wallets consistently before checking daily closings.
+ perform 1 from public.ledger_cash_accounts a
+  where a.owner_id=p_owner and a.id in
+   (select part.account_id from public.ledger_payment_parts part
+    where part.owner_id=p_owner and part.payment_id=v_payment.id)
+  order by a.id for update;
  if exists(select 1 from public.ledger_day_closings closing
     join public.ledger_payment_parts part on part.account_id=closing.account_id
       and part.payment_id=v_payment.id
@@ -308,8 +314,9 @@ begin
    or p_reason not in ('opening','deposit','withdrawal','expense','correction')
    or char_length(trim(coalesce(p_note,''))) not between 3 and 500
    then raise exception 'INVALID_MOVEMENT' using errcode='22023'; end if;
- if not exists(select 1 from public.ledger_cash_accounts where id=p_account and owner_id=p_owner and active)
- then raise exception 'CASH_ACCOUNT_NOT_FOUND' using errcode='42501'; end if;
+ -- Serialize manual movement and closing using the same account lock.
+ perform 1 from public.ledger_cash_accounts where id=p_account and owner_id=p_owner and active for update;
+ if not found then raise exception 'CASH_ACCOUNT_NOT_FOUND' using errcode='42501'; end if;
  if exists(select 1 from public.ledger_day_closings where owner_id=p_owner
    and account_id=p_account and local_day=(now() at time zone 'Asia/Damascus')::date)
  then raise exception 'CASH_ACCOUNT_ALREADY_CLOSED_TODAY' using errcode='22023';end if;
