@@ -255,6 +255,7 @@ try{
    .ledger_staff_members?.some(m=>m.user_id==='70000000-0000-4000-8000-000000000007'&&m.active===false));
  const ownerAudit=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
  assert.equal(ownerAudit.ledger_audit.at(-1).new_value.active,false);
+ await page.waitForFunction(()=>document.querySelector('#qa-staff-status')?.textContent?.includes('معطّل'));
  assert.match(await page.locator('#qa-staff-status').innerText(),/معطّل/);
  const auditCount=ownerAudit.ledger_audit.length;
  // Duplicate tap must report already disabled without adding another audit event.
