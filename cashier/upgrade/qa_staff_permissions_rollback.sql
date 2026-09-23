@@ -73,7 +73,18 @@ begin
  insert into qa_staff_permissions values('manager_can_close_and_read_audit','pass');
 
  perform set_config('request.jwt.claim.sub',v_owner::text,true);
- perform public.ledger_disable_staff(v_email);
+ v_result:=public.ledger_disable_staff(v_email);
+ if v_result->>'already_disabled'<>'false' then raise exception 'FIRST_DISABLE_NOT_ACKNOWLEDGED';end if;
+ select count(*) into v_count from public.ledger_audit
+  where owner_id=v_owner and entity_type='ledger_staff_members'
+    and new_value @> '{"active":false}'::jsonb;
+ v_result:=public.ledger_disable_staff(v_email);
+ if v_result->>'already_disabled'<>'true' then raise exception 'SECOND_DISABLE_NOT_IDEMPOTENT';end if;
+ if v_count<>(select count(*) from public.ledger_audit
+  where owner_id=v_owner and entity_type='ledger_staff_members'
+    and new_value @> '{"active":false}'::jsonb)
+ then raise exception 'DUPLICATE_DISABLE_CREATED_AUDIT_EVENT';end if;
+ insert into qa_staff_permissions values('duplicate_staff_disable_idempotent','pass');
  perform set_config('request.jwt.claim.sub',v_staff::text,true);
  if ledger_private.can_work(v_owner,'read')
  or ledger_private.can_work(v_owner,'cashier')
