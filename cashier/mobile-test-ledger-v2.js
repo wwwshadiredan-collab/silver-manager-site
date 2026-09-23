@@ -89,8 +89,12 @@ function v2Render(){
    (closed?'<div class="v2-amber" role="status">🔒 مغلق اليوم ('+v2DamascusToday()+') — يمنع إضافة حركات جديدة.</div>':'')+
    (v2CanManage()?'<div class="v2-inline-actions"><button class="btn sec" onclick="v2Movement(\''+a.id+'\')">حركة صندوق</button><button class="btn sec" onclick="v2Close(\''+a.id+'\')">تسوية اليوم</button></div>':'')+'</div>'
  }).join('')||'<div class="empty">أضف صندوق نقد أو محفظة لتسجيل الدفعات.</div>';
+ // Background refresh must not erase a user's in-progress payment or code form.
+ var chosenCustomer=q('v2Customer').value,chosenPortalCustomer=q('v2PortalCustomer').value;
  q('v2Customer').innerHTML='<option value="">اختر الزبون</option>'+V2.customers.map(function(c){return '<option value="'+v2Esc(c.id)+'">'+v2Esc(c.name)+'</option>'}).join('');
  q('v2PortalCustomer').innerHTML=q('v2Customer').innerHTML;
+ if(V2.customers.some(function(c){return c.id===chosenCustomer}))q('v2Customer').value=chosenCustomer;
+ if(V2.customers.some(function(c){return c.id===chosenPortalCustomer}))q('v2PortalCustomer').value=chosenPortalCustomer;
  q('v2Pending').innerHTML=V2.payments.filter(function(p){return p.state==='pending'}).map(function(p){
    return '<div class="v2-item"><b>'+v2Esc(v2CustomerName(p.customer_id))+'</b> <span class="v2-flag v2-amber">بانتظار التأكيد</span><div>'+v2Fmt(p.settled_amount,p.debt_currency)+' · سعر الدولار '+v2Esc(p.fx_syp_per_usd)+'</div><small>'+v2Date(p.created_at)+' · '+v2Esc(p.memo)+'</small>'+
     (v2CanCash()?'<div class="v2-inline-actions"><button class="btn pri" onclick="v2Confirm(\''+p.id+'\')">تأكيد الاستلام والخصم</button><button class="btn danger" onclick="v2Reject(\''+p.id+'\')">رفض</button></div>':'')+'</div>'
