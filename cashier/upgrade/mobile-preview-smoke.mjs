@@ -105,9 +105,73 @@ try{
  const reset=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
  assert.equal(reset.ledger_payments.length,0);
  assert.equal(reset.journal.length,1);
+ console.log('PASS reset synthetic state');
+
+ // Reproduce the iPhone report exactly: deposit 20, count 10 at closing (variance -10),
+ // then try a +10 deposit. Both the UI and mock RPC must reject it; original close stays.
+ await page.waitForFunction(()=>document.querySelector('#v2Accounts')?.textContent?.includes('دولار نقدي تجريبي'));
+ const cashAfterReset=page.locator('#v2Accounts .v2-item').filter({hasText:'دولار نقدي تجريبي'});
+ qaPrompts=['20','deposit','رصيد أولي للتجربة'];
+ await cashAfterReset.getByRole('button',{name:'حركة صندوق'}).click();
+ await page.waitForFunction(()=>document.querySelector('#v2Message')?.textContent?.includes('تمت إضافة حركة'));
+ const firstDeposit=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(firstDeposit.ledger_cash_movements.length,1);
+ assert.equal(firstDeposit.ledger_cash_movements[0].amount,20);
+ qaPrompts=[today,'10','اختبار الفرق ناقص عشرة'];
+ await cashAfterReset.getByRole('button',{name:'تسوية اليوم'}).click();
+ await page.waitForFunction(()=>document.querySelector('#v2Closings')?.textContent?.includes('دولار نقدي تجريبي'));
+ const afterClose=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(afterClose.ledger_day_closings.length,1);
+ assert.equal(afterClose.ledger_day_closings[0].expected_balance,20);
+ assert.equal(afterClose.ledger_day_closings[0].counted_balance,10);
+ assert.equal(afterClose.ledger_day_closings[0].difference,-10);
+ assert.match(await cashAfterReset.innerText(),/مغلق اليوم/);
+ await cashAfterReset.getByRole('button',{name:'حركة صندوق'}).click();
+ await page.waitForFunction(()=>document.querySelector('#v2Message')?.textContent?.includes('الصندوق مُغلق اليوم'));
+ // Deliberately bypass the UI to verify the MOCK SERVER still blocks +10.
+ const blockedRpc=await page.evaluate(async({owner,account})=>{
+   const res=await fetch('https://cashier-preview.invalid/rest/v1/rpc/ledger_add_cash_movement',{
+     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+       p_owner:owner,p_account:account,p_amount:10,p_reason:'deposit',
+       p_note:'server rejection regression'
+     })
+   });
+   return {status:res.status,data:await res.json()};
+ },{owner:'10000000-0000-4000-8000-000000000001',account:'40000000-0000-4000-8000-000000000004'});
+ assert.equal(blockedRpc.status,409);
+ assert.equal(blockedRpc.data.message,'CASH_ACCOUNT_ALREADY_CLOSED_TODAY');
+ const afterAttempt=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(afterAttempt.ledger_cash_movements.length,1);
+ assert.equal(afterAttempt.ledger_cash_movements[0].amount,20);
+ assert.equal(afterAttempt.ledger_day_closings.length,1);
+ assert.equal(afterAttempt.ledger_day_closings[0].difference,-10);
+ console.log('PASS iPhone repro: deposit 20 / close counted 10 = -10 variance; post-close +10 blocked in UI AND RPC, balance stays 20');
+
+ // Historical invalid synthetic entries from the earlier mock must be identified,
+ // not silently deleted or counted as a valid new close.
+ await page.evaluate(()=>{
+   const key='cashier_mobile_qa_synthetic_v1';
+   const state=JSON.parse(localStorage.getItem(key));
+   const closing=state.ledger_day_closings[0];
+   state.ledger_cash_movements.push({id:crypto.randomUUID(),owner_id:closing.owner_id,
+      account_id:closing.account_id,amount:10,reason:'deposit',
+      note:'old buggy demo entry',created_by:closing.closed_by,
+      created_at:new Date(Date.parse(closing.closed_at)+1000).toISOString()});
+   localStorage.setItem(key,JSON.stringify(state));
+ });
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>document.querySelector('[role=alert]')?.textContent?.includes('حركة اختبار قديمة'));
+ assert.equal(await page.locator('[role=alert]').count(),1);
+ console.log('PASS old +10 demo record after close is flagged for reset without silent deletion');
+
+ await page.getByRole('button',{name:'تصفير التجربة'}).click();
+ await page.waitForFunction(()=>document.querySelector('#clist')?.textContent?.includes('أحمد التجريبي'));
+ const clean=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
+ assert.equal(clean.ledger_cash_movements.length,0);
+ assert.equal(clean.ledger_day_closings.length,0);
  assert.deepEqual(realCalls,[]);
  assert.deepEqual(errors,[]);
- console.log('PASS reset synthetic state; no production Supabase requests and zero uncaught errors');
+ console.log('PASS mock isolation: no production Supabase requests and zero uncaught errors');
 }finally{
  await context.close();await browser.close();await new Promise(done=>server.close(done));
 }
