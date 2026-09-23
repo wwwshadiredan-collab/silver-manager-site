@@ -259,6 +259,8 @@ async function v2DisableStaff(){
   if(!confirm('هل بدك تعطّل صلاحيات هالموظف فوراً؟')){v2Warn('أُلغيت عملية التعطيل ولم تتغير صلاحيات الموظف.',true);return}
   var result=await api('rpc/ledger_disable_staff',{method:'POST',body:{p_email:email}});
   q('v2StaffEmail').value='';
+  // Display the confirmed result immediately, without waiting for an unrelated background refresh.
+  if(typeof window.qaRefreshStaffStatus==='function')window.qaRefreshStaffStatus();
   await v2Load(true);
   v2Warn(result.already_disabled?'الموظف معطّل من قبل؛ ما عنده أي وصول لبيانات المنشأة.':'تم تعطيل الموظف وسحب صلاحياته على المنشأة. جرّب تبديل الدور للمشاهد للتأكد.',false);
   if(typeof window.qaRefreshStaffStatus==='function')window.qaRefreshStaffStatus();
