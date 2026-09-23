@@ -308,8 +308,11 @@
          return response(filtered);
        }
        const u=new URL(url);
-       const qOwner=(u.searchParams.get('owner_id')||'').replace(/^eq\./,'');
-       const target=qOwner||owner;
+       // Honor REST filters: the legacy app asks for the signed-in person's own
+       // customers, while the v2 staff workspace explicitly asks for the employer's.
+       const filterName=table==='customers'?'user_id':'owner_id';
+       const qOwner=(u.searchParams.get(filterName)||'').replace(/^eq\./,'');
+       const target=qOwner||selected.id;
        if(!canWork(target,'read'))return response([]);
        if(table==='ledger_audit'&&!canWork(target,'manager'))return response([]);
        if(table==='ledger_portal_disputes'&&!canWork(target,'manager'))return response([]);
