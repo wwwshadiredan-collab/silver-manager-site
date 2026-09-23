@@ -29,8 +29,10 @@ page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'المبلغ غ
 try{
  await page.goto(base+'mobile-test.html',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>document.querySelector('#clist')?.textContent?.includes('أحمد التجريبي'));
+ await page.waitForFunction(()=>document.querySelector('#ledgerV2')?.classList.contains('on'));
+ assert.equal(await page.locator('#qaOpenMixedPayment').isVisible(),true);
  assert.match(await page.locator('#qa-mobile-banner').innerText(),/بيانات وهمية/);
- console.log('PASS mobile preview bootstraps same Cashier Ledger with synthetic customers');
+ console.log('PASS mobile preview opens mixed-payment cashbox by default and shows a prominent button');
  await page.locator('nav.bottom button[data-v="ledgerV2"]').click();
  await page.waitForFunction(()=>document.querySelectorAll('#v2Customer option').length>=3);
  assert.equal(await page.locator('#v2Accounts .v2-item').count(),3);
