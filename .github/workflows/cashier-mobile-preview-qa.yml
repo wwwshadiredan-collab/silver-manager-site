@@ -24,6 +24,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Mobile touch-viewport test with synthetic-only local data
         run: node cashier/upgrade/mobile-preview-smoke.mjs
+      - name: Standalone iPhone offline PWA synthetic test (real Service Worker and airplane-mode simulation)
+        run: node cashier/upgrade/mobile-offline-safari-smoke.mjs
       - name: Verify preview is accessible from a mobile browser without GitHub login
         continue-on-error: true
         shell: bash
