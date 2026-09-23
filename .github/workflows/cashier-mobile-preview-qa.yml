@@ -1,0 +1,51 @@
+name: Cashier mobile preview QA
+on:
+  push:
+    branches:
+      - cashier-mobile-preview-20260923
+  pull_request:
+    branches:
+      - cashier/ledger-multicurrency-portal-20260923
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser testing dependency
+        run: npm install --no-save --no-package-lock playwright@1.63.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Mobile touch-viewport test with synthetic-only local data
+        run: node cashier/upgrade/mobile-preview-smoke.mjs
+      - name: Standalone iPhone offline PWA synthetic test (real Service Worker and airplane-mode simulation)
+        run: node cashier/upgrade/mobile-offline-safari-smoke.mjs
+      - name: Verify preview is accessible from a mobile browser without GitHub login
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -sSL --retry 3 --retry-delay 2 -D /tmp/preview-headers \
+            'https://raw.githack.com/wwwshadiredan-collab/silver-manager-site/cashier-mobile-preview-20260923/cashier/mobile-test.html' -o /tmp/mobile-test.html
+          echo "PREVIEW HEADERS"; head -n 15 /tmp/preview-headers
+          echo "PREVIEW BODY BYTES"; wc -c /tmp/mobile-test.html
+          echo "PREVIEW FIRST BYTES"; head -c 260 /tmp/mobile-test.html; echo
+          echo "PUBLIC REPO STATUS"
+          curl -sSL -w 'STATUS:%{http_code}\n' 'https://api.github.com/repos/wwwshadiredan-collab/silver-manager-site' -o /tmp/repo-visibility.json
+          jq '{private,visibility,message}' /tmp/repo-visibility.json
+          grep -q 'بيانات وهمية' /tmp/mobile-test.html
+          QA='https://raw.githack.com/wwwshadiredan-collab/silver-manager-site/cashier-mobile-preview-20260923/cashier'
+          curl -fsSL --retry 3 "$QA/mobile-offline-test.html" -o /tmp/mobile-offline-test.html
+          grep -q 'اختبار أوفلاين Safari' /tmp/mobile-offline-test.html
+          curl -fsSL --retry 3 -D /tmp/offline-sw-headers "$QA/mobile-offline-sw.js" -o /tmp/mobile-offline-sw.js
+          grep -q 'cashier-mobile-offline-qa-v1' /tmp/mobile-offline-sw.js
+          grep -Ei 'content-type: *(text/javascript|application/javascript)' /tmp/offline-sw-headers
+          curl -fsSL --retry 3 "$QA/mobile-offline-test.webmanifest" -o /tmp/mobile-offline-test.webmanifest
+          grep -q '"start_url"' /tmp/mobile-offline-test.webmanifest
+          echo 'PASS public offline QA HTML, script MIME, and manifest accessible from Safari'

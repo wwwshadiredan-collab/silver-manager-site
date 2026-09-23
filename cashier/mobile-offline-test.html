@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#08111f">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Cashier ledger">
-<link rel="apple-touch-icon" sizes="192x192" href="./cashier-icon-192.png"><link rel="icon" type="image/png" href="./cashier-icon-192.png"><link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./ledger-v2.css"><script defer src="./mobile-test-ledger-v2.js"></script>
+<link rel="apple-touch-icon" sizes="192x192" href="./cashier-icon-192.png"><link rel="icon" type="image/png" href="./cashier-icon-192.png"><link rel="manifest" href="./mobile-offline-test.webmanifest"><link rel="stylesheet" href="./ledger-v2.css"><script defer src="./mobile-test-ledger-v2.js"></script>
 <title>Cashier ledger</title>
 <style>
 :root{--b:#07111f;--p:#0e1a2d;--p2:#13213a;--l:#22324d;--t:#f5f7fb;--m:#9caac0;--g:#39d98a;--r:#ff657c;--w:#f3b84b}
@@ -13,8 +13,8 @@
 .modal{display:none;position:fixed;inset:0;background:#000a;z-index:50;align-items:center;justify-content:center;padding:18px}.modal.show{display:flex}.dlg{width:min(650px,100%);max-height:90vh;overflow:auto;background:var(--p);border:1px solid var(--l);border-radius:20px;padding:17px}.dh{display:flex;justify-content:space-between;align-items:center}.form{display:grid;grid-template-columns:1fr 1fr;gap:9px}.span{grid-column:1/-1}.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;background:#081426;padding:5px;border-radius:13px;margin:10px 0}.seg button{border:0;border-radius:9px;padding:9px;background:transparent;color:var(--m);font-weight:800}.seg button.on{background:var(--p2);color:var(--t)}.notice{background:#132545;border:1px solid #28436f;padding:10px;border-radius:12px;color:#c8d8ff;font-size:13px;margin-bottom:10px}
 @media(max-width:850px){.layout{display:block}aside{display:none}main{padding:14px 12px 90px}.stats{grid-template-columns:repeat(2,1fr)}.stat .v{font-size:21px}.grid2{grid-template-columns:1fr}.hero .pri{display:none}.bottom{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));position:fixed;bottom:0;left:0;right:0;z-index:30;background:#07111ff5;border-top:1px solid var(--l);padding:7px 5px calc(7px + env(safe-area-inset-bottom))}.bottom button{border:0;background:transparent;color:var(--m);padding:8px 2px;font-size:11px;border-radius:9px}.bottom button.on{background:var(--p2);color:var(--t)}.bottom button.logout{color:#ff9cab;font-weight:800}.fab{display:block;position:fixed;left:15px;bottom:78px;z-index:35;width:55px;height:55px;border:0;border-radius:18px;background:var(--g);font-size:28px;font-weight:900}.modal{align-items:flex-end;padding:0}.dlg{border-radius:20px 20px 0 0;max-height:92vh}.form{grid-template-columns:1fr}.span{grid-column:auto}.desktop{display:none!important}}
 .top>div:first-child{min-width:0;overflow:hidden}.top>div:first-child .small{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top>div:last-child{flex-shrink:0;gap:5px!important}#inviteAdminBtn{white-space:nowrap}@media(max-width:420px){.top{padding:0 10px;gap:5px}.top .ttl{font-size:14px}.top>div:first-child .small{max-width:120px;font-size:10px}#inviteAdminBtn{padding:7px 6px!important;font-size:11px!important}}
-</style><script src="./mobile-test-mock.js"></script></head>
-<body><div id="qa-mobile-banner" dir="rtl" style="position:sticky;top:0;z-index:99999;background:#065F46;color:#fff;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;font:700 13px system-ui"><span>🧪 اختبار تعطيل الموظف المصحّح 5 — بيانات وهمية فقط؛ ما في أي خصم حقيقي</span><span style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" id="qaOpenMixedPayment" onclick="view('ledgerV2')" style="background:#fef08a;color:#422006;border:2px solid #f59e0b;padding:9px 10px;border-radius:8px;font-weight:900">💳 افتح الدفع المختلط</button><button type="button" onclick="location.href='./mobile-test-customer.html'" style="background:#d1fae5;color:#064e3b;border:0;padding:6px;border-radius:8px">تجربة كشف الزبون</button><button type="button" onclick="resetCashierMobileDemo()" style="background:#0f172a;color:white;border:0;padding:6px;border-radius:8px">تصفير التجربة</button></span></div>
+</style><script src="./mobile-offline-mock.js"></script></head>
+<body><div id="qa-mobile-banner" dir="rtl" style="position:sticky;top:0;z-index:99999;background:#065F46;color:#fff;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;font:700 13px system-ui"><span>🧪 اختبار أوفلاين Safari — بيانات وهمية فقط، لا اتصال بزبائن حقيقيين</span><span style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" id="qaOpenMixedPayment" onclick="view('ledgerV2')" style="background:#fef08a;color:#422006;border:2px solid #f59e0b;padding:9px 10px;border-radius:8px;font-weight:900">💳 افتح الدفع المختلط</button><button type="button" onclick="location.href='./mobile-test-customer.html'" style="background:#d1fae5;color:#064e3b;border:0;padding:6px;border-radius:8px">تجربة كشف الزبون</button><button type="button" onclick="resetCashierMobileDemo()" style="background:#0f172a;color:white;border:0;padding:6px;border-radius:8px">تصفير التجربة</button></span></div>
 <div id="qa-staff-switcher" dir="rtl" style="position:relative;z-index:9999;background:#143b35;color:white;padding:10px 12px;font:700 13px system-ui">
   <div id="qa-role-badge" role="status" style="margin-bottom:7px">الدور التجريبي الحالي: مالك</div>
   <div style="display:flex;gap:7px;flex-wrap:wrap">
@@ -25,6 +25,14 @@
   </div>
   <div id="qa-staff-status" role="status" style="margin-top:7px;font-size:12px;color:#fef08a">حالة المشاهد التجريبي: جارِ الفحص...</div>
   <div id="qa-owner-only-note" class="hide" style="margin-top:7px;font-size:12px;color:#fef3c7">هذه معاينة موظف وهمي. اختبر صلاحيات الصندوق فقط؛ حسابات الزبائن الحقيقية غير متصلة.</div>
+</div>
+<div id="qa-offline-guide" dir="rtl" style="background:#172554;border-block:2px solid #60a5fa;color:white;padding:12px;line-height:1.7;font:600 13px system-ui">
+  <strong style="font-size:16px">📴 اختبار الأوفلاين الحقيقي على الآيفون</strong>
+  <div id="qaOfflineCache" role="status" style="color:#fde68a">جاري تجهيز التخزين للأوفلاين... انتظر ظهور علامة الصح قبل تشغيل وضع الطيران.</div>
+  <div id="qaOfflineStats" role="status" style="margin:8px 0">جاري قراءة حالة الاختبار...</div>
+  <button type="button" id="qaRefreshOffline" onclick="qaOfflineStatus()" style="background:#bfdbfe;color:#172554;padding:10px 13px;border:0;border-radius:10px;font-weight:900">🔎 فحص حالة التخزين والمزامنة</button>
+  <p style="margin:9px 0 0">افتح الصفحة أولاً وأنت متصل. بعد ✅ جاهز للأوفلاين شغّل وضع الطيران، أضف زبوناً وهمياً وسجّل دين 20 دولار بالطريقة القديمة، أغلق Safari وافتح نفس الرابط وأنت أوفلاين. ألغِ وضع الطيران واضغط فحص الحالة بعد المزامنة.</p>
+  <p style="color:#fde68a;font-size:12px;margin:7px 0 0">المدفوعات المختلطة الجديدة عمداً لا تعمل بدون إنترنت. الاختبار على بيانات وهمية محفوظة داخل متصفحك فقط؛ المزامنة نحو خادم وهمي محلي داخل الصفحة وليست Supabase الحقيقية.</p>
 </div>
 <div id="auth"><div class="box"><img class="logo" src="./cashier-icon-192.png" alt="Cashier Ledger"><h1>Cashier Ledger</h1><p class="muted">ديون، دفعات، مصاريف وأرباح — تسجيل يدوي فقط.</p><div class="notice">زبون وبدك كشف حسابك بدون بريد؟ افتح صفحة الكود الخاصة فيك.</div><button class="btn pri wide" onclick="location.href='./mobile-test-customer.html'">كشف حساب الزبون بالكود فقط</button><div id="loginFields" style="margin-top:14px"><div class="f"><label>البريد</label><input id="email" type="email" autocomplete="email" dir="ltr"></div><div class="f"><label>كلمة المرور</label><input id="pass" type="password" autocomplete="current-password"></div><button class="btn pri wide" onclick="login()">تسجيل الدخول</button><button class="btn sec wide" style="margin-top:8px" onclick="toggleInviteForm()">تفعيل حساب بكود دعوة</button><div id="inviteForm" class="hide"><div class="f"><label for="inviteCode">كود الدعوة الذي استلمته من الإدارة</label><input id="inviteCode" type="text" dir="ltr" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CL-A1B2C3D4E5F6" maxlength="100" style="font-size:21px;font-weight:800;letter-spacing:2px;text-align:center"></div><button id="signupBtn" class="btn pri wide" onclick="signup()">إنشاء الحساب بالكود</button><p class="small muted">اختار بريدك أنت وكلمة مرور جديدة، وبعدين أدخل كود الدعوة اللي وصلك. الكود الجديد 12 خانة، صالح 7 أيام ولمرة واحدة فقط.</p></div><button class="btn sec wide" style="margin-top:8px" onclick="resendSignupConfirmation()">↻ إعادة إرسال رسالة تفعيل البريد</button><p class="small muted" style="margin:5px 0 12px">إذا ظهر أن الحساب أُنشئ لكن ما عم يدخل، افتح بريدك وأكّد الحساب أولاً.</p><button class="btn sec wide" style="margin-top:8px" onclick="showForgotPassword()">نسيت كلمة المرور؟</button></div>
 <div id="forgotPasswordFlow" class="hide">
@@ -326,5 +334,30 @@ function showC(id){current=id;var c=D.customers.find(function(x){return x.id===i
 function reverse(id){var x=D.journal.find(function(e){return e.id===id});if(!x||D.journal.some(function(e){return e.related_id===id}))return;var why=prompt('سبب عكس العملية:');if(why===null)return;var r={id:uid(),owner_id:D.user.id,subject_id:x.subject_id,category:x.category+'_reversal',currency:curOf(x),value:-Number(x.value||0),secondary_value:-Number(x.secondary_value||0),delta:-Number(x.delta||0),note:'عكس: '+(why||'تصحيح'),related_id:x.id,happened_at:iso(),created_at:iso()};D.journal.push(r);ins('journal',r);audit('عكس عملية '+label(x.category),r.id);render();if(current===x.subject_id)showC(current)}
 function range(n){var t=new Date(),f=new Date();if(n)f.setDate(f.getDate()-n+1);q('from').value=day(f);q('to').value=day(t);renderReports()}
 function renderReports(){var f=q('from').value,t=q('to').value,a=D.journal.filter(function(x){var d=day(x.happened_at);return (!f||d>=f)&&(!t||d<=t)}),mu=met(a,'USD'),ms=met(a,'SYP');q('rTrans').innerHTML=pairHtml(mu.tr,ms.tr);q('rColl').innerHTML=pairHtml(mu.co,ms.co);q('rDebt').innerHTML=pairHtml(mu.de,ms.de);q('rExp').innerHTML=pairHtml(mu.ex,ms.ex);q('rCom').innerHTML=pairHtml(mu.cm,ms.cm);q('rNet').innerHTML=pairHtml(mu.net,ms.net)}
-range(30);var last=JSON.parse(localStorage.getItem('last')||'null');if(last&&load(last.id))q('offbtn').classList.remove('hide');var authCallback=handleAuthCallbackOnLoad();if(!authCallback&&S&&S.user){D.user=S.user;start()}if(S&&S.user){window.addEventListener('load',function(){setTimeout(function(){if(D.user&&typeof window.view==='function')window.view('ledgerV2')},150)})}if(false&&'serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(function(){});
+range(30);var last=JSON.parse(localStorage.getItem('last')||'null');if(last&&load(last.id))q('offbtn').classList.remove('hide');var authCallback=handleAuthCallbackOnLoad();if(!authCallback&&S&&S.user){D.user=S.user;start()}if(S&&S.user){window.addEventListener('load',function(){setTimeout(function(){if(D.user&&typeof window.view==='function')window.view('ledgerV2')},150)})}function qaOfflineStatus(){
+ try{
+  var ownerId='10000000-0000-4000-8000-000000000001';
+  var cached=JSON.parse(localStorage.getItem('cc_'+ownerId)||'null');
+  var server=JSON.parse(localStorage.getItem('cashier_mobile_offline_qa_synthetic_v1')||'null');
+  var pending=(cached&&cached.out||[]).length;
+  var names=(cached&&cached.customers||[]).filter(function(x){return x.name.indexOf('أوفلاين')!==-1}).map(function(x){return x.name}).join('، ');
+  var remote=(server&&server.customers||[]).filter(function(x){return x.name.indexOf('أوفلاين')!==-1}).length;
+  var localCharges=(cached&&cached.journal||[]).filter(function(x){return x.category==='charge'&&x.value===20&&x.subject_id&&(cached.customers||[]).some(function(y){return y.id===x.subject_id&&y.name.indexOf('أوفلاين')!==-1})}).length;
+  q('qaOfflineStats').textContent=(navigator.onLine?'🌐 المتصفح يعتبرك متصل':'📴 المتصفح يعتبرك أوفلاين')+
+   ' | العمليات المعلّقة: '+pending+' | ديون 20$ المحلية للاختبار: '+localCharges+
+   ' | الزبائن التجريبيون المتزامنون: '+remote+(names?' | '+names:'');
+ }catch(e){q('qaOfflineStats').textContent='تعذر قراءة الحالة: '+e.message}
+}
+window.addEventListener('online',function(){setTimeout(qaOfflineStatus,1000);setTimeout(qaOfflineStatus,3000)});
+window.addEventListener('offline',qaOfflineStatus);
+window.addEventListener('DOMContentLoaded',qaOfflineStatus);
+if('serviceWorker' in navigator){
+ navigator.serviceWorker.register('./mobile-offline-sw.js',{scope:'./'})
+ .then(function(){return navigator.serviceWorker.ready})
+ .then(function(){
+  q('qaOfflineCache').textContent='✅ جاهز للأوفلاين؛ تم تخزين الصفحة وملفاتها بنجاح.';
+  qaOfflineStatus();
+ })
+ .catch(function(e){q('qaOfflineCache').textContent='❌ تخزين الأوفلاين فشل: '+String(e.message||e).slice(0,130)});
+}else q('qaOfflineCache').textContent='❌ هذا المتصفح لا يدعم التخزين المطلوب للأوفلاين';
 </script></body></html>

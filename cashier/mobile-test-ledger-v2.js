@@ -1,12 +1,18 @@
 /* Cashier Ledger extension on the EXISTING app, loaded after its legacy inline script.
    Financial RPCs intentionally require an active online session: no speculative/offline debits. */
 var V2={userId:null,owner:null,role:'owner',workspaces:[],accounts:[],customers:[],payments:[],
- balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,initialized:false};
+ balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,reloadRequested:false,initialized:false};
 function v2Esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function v2Fmt(n,c){return Number(n||0).toLocaleString('ar-SY',{maximumFractionDigits:c==='SYP'?2:6})+' '+(c==='SYP'?'ل.س':c)}
 function v2Date(s){return s?new Date(s).toLocaleString('ar-SY'):'—'}
+function v2DamascusToday(){
+ var parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Damascus',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ var part=function(name){return parts.find(function(x){return x.type===name}).value};
+ return part('year')+'-'+part('month')+'-'+part('day');
+}
+function v2ClosedToday(accountId){return V2.closings.some(function(c){return c.account_id===accountId&&c.local_day===v2DamascusToday()})}
 function v2Warn(text,negative){var el=q('v2Message');if(el){el.textContent=text||'';el.style.color=negative?'#ff9cab':'#39d98a'}}
-function v2Error(e){var str=String(e&&e.message||e||'تعذر تنفيذ الطلب');try{var j=JSON.parse(str);return String(j.message||j.error||str)}catch(x){return str.slice(0,300)}}
+function v2Error(e){var str=String(e&&e.message||e||'تعذر تنفيذ الطلب');try{var j=JSON.parse(str);str=String(j.message||j.error||str)}catch(x){}if(str.includes('CASH_ACCOUNT_ALREADY_CLOSED_TODAY'))return 'الصندوق مُغلق اليوم. لا يمكن إضافة حركة بعد التسوية. لم يتغير الرصيد.';if(str.includes('DAY_ALREADY_CLOSED'))return 'هذا الصندوق تمت تسويته مسبقاً بنفس التاريخ. لم تتغير التسوية السابقة.';return str.slice(0,300)}
 function v2Online(){if(!navigator.onLine||!S||!S.access_token)throw Error('الدفعات والصندوق يحتاجوا اتصال إنترنت وجلسة دخول فعالة. لم يُخصم أي مبلغ.')}
 function v2CanCash(){return V2.role==='owner'||V2.role==='manager'||V2.role==='cashier'}
 function v2CanManage(){return V2.role==='owner'||V2.role==='manager'}
@@ -14,7 +20,7 @@ function v2AccountName(id){var x=V2.accounts.find(function(a){return a.id===id})
 function v2CustomerName(id){var x=V2.customers.find(function(a){return a.id===id});return x?x.name:'—'}
 function v2Field(){return '<option value="">اختار الصندوق أو المحفظة</option>'+V2.accounts.filter(function(a){return a.active}).map(function(a){return '<option value="'+v2Esc(a.id)+'">'+v2Esc(a.label)+' · '+v2Esc(a.currency)+'</option>'}).join('')}
 function v2SetWorkspace(){V2.owner=q('v2Owner').value;V2.role=(V2.workspaces.find(function(w){return w.id===V2.owner})||{}).role||'viewer';v2Load(true)}
-function v2Clear(){V2={userId:null,owner:null,role:'owner',workspaces:[],accounts:[],customers:[],payments:[],balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,initialized:false};['v2Accounts','v2Pending','v2History','v2Disputes','v2Audit','v2Closings','v2Legs','v2CustomerCodes'].forEach(function(id){var el=q(id);if(el)el.innerHTML=''});if(q('v2IssuedCode'))q('v2IssuedCode').value=''}
+function v2Clear(){V2={userId:null,owner:null,role:'owner',workspaces:[],accounts:[],customers:[],payments:[],balances:[],disputes:[],audit:[],closings:[],members:[],requestId:null,loading:false,reloadRequested:false,initialized:false};['v2Accounts','v2Pending','v2History','v2Disputes','v2Audit','v2Closings','v2Legs','v2CustomerCodes'].forEach(function(id){var el=q(id);if(el)el.innerHTML=''});if(q('v2IssuedCode'))q('v2IssuedCode').value=''}
 function v2Install(){
  if(V2.initialized)return;V2.initialized=true;
  var oldView=window.view;
@@ -26,7 +32,7 @@ function v2Install(){
 async function v2Load(force){
  if(!D.user){v2Warn('سجل الدخول أولاً',true);return}
  if(!navigator.onLine){v2Warn('الصندوق المتعدد يحتاج اتصالاً بالإنترنت. بيانات الديون القديمة ما زالت متاحة من القوائم الأصلية.',true);return}
- if(V2.loading)return;
+ if(V2.loading){if(force)V2.reloadRequested=true;return}
  V2.loading=true;v2Warn('جارِ تحديث البيانات...',false);
  var sessionUser=D.user.id;
  try{
@@ -64,17 +70,31 @@ async function v2Load(force){
   v2Render();
   v2Warn('البيانات محدّثة. الدفعات الجديدة ما بتنخصم إلا بعد التأكيد اليدوي.',false);
  }catch(e){if(/42501|401|403|not.authorized|permission/i.test(v2Error(e)))v2Clear();v2Warn('تعذّر تحميل التحديث الجديد: '+v2Error(e),true)}
- finally{V2.loading=false}
+ finally{
+  V2.loading=false;
+  // A payment may arrive while an earlier refresh is still running.
+  // Never silently discard its follow-up refresh or leave the pending list stale.
+  if(V2.reloadRequested){
+    V2.reloadRequested=false;
+    setTimeout(function(){if(D.user)v2Load(true)},0);
+  }
+ }
 }
 function v2Render(){
  var accounts=V2.accounts;
  q('v2Accounts').innerHTML=accounts.map(function(a){
   var b=V2.balances.find(function(x){return x.account_id===a.id});
+  var closed=v2ClosedToday(a.id);
   return '<div class="v2-item"><b>'+v2Esc(a.label)+'</b> <span class="v2-flag">'+v2Esc(a.channel)+' · '+v2Esc(a.currency)+'</span><div class="small muted">رصيد محسوب من العمليات المؤكدة والحركات اليدوية</div><div class="amt">'+v2Fmt(b?b.expected:0,a.currency)+'</div>'+
+   (closed?'<div class="v2-amber" role="status">🔒 مغلق اليوم ('+v2DamascusToday()+') — يمنع إضافة حركات جديدة.</div>':'')+
    (v2CanManage()?'<div class="v2-inline-actions"><button class="btn sec" onclick="v2Movement(\''+a.id+'\')">حركة صندوق</button><button class="btn sec" onclick="v2Close(\''+a.id+'\')">تسوية اليوم</button></div>':'')+'</div>'
  }).join('')||'<div class="empty">أضف صندوق نقد أو محفظة لتسجيل الدفعات.</div>';
+ // Background refresh must not erase a user's in-progress payment or code form.
+ var chosenCustomer=q('v2Customer').value,chosenPortalCustomer=q('v2PortalCustomer').value;
  q('v2Customer').innerHTML='<option value="">اختر الزبون</option>'+V2.customers.map(function(c){return '<option value="'+v2Esc(c.id)+'">'+v2Esc(c.name)+'</option>'}).join('');
  q('v2PortalCustomer').innerHTML=q('v2Customer').innerHTML;
+ if(V2.customers.some(function(c){return c.id===chosenCustomer}))q('v2Customer').value=chosenCustomer;
+ if(V2.customers.some(function(c){return c.id===chosenPortalCustomer}))q('v2PortalCustomer').value=chosenPortalCustomer;
  q('v2Pending').innerHTML=V2.payments.filter(function(p){return p.state==='pending'}).map(function(p){
    return '<div class="v2-item"><b>'+v2Esc(v2CustomerName(p.customer_id))+'</b> <span class="v2-flag v2-amber">بانتظار التأكيد</span><div>'+v2Fmt(p.settled_amount,p.debt_currency)+' · سعر الدولار '+v2Esc(p.fx_syp_per_usd)+'</div><small>'+v2Date(p.created_at)+' · '+v2Esc(p.memo)+'</small>'+
     (v2CanCash()?'<div class="v2-inline-actions"><button class="btn pri" onclick="v2Confirm(\''+p.id+'\')">تأكيد الاستلام والخصم</button><button class="btn danger" onclick="v2Reject(\''+p.id+'\')">رفض</button></div>':'')+'</div>'
@@ -166,6 +186,7 @@ async function v2CreateAccount(){
 }
 async function v2Movement(accountId){
  if(!v2CanManage())return;
+ if(v2ClosedToday(accountId)){v2Warn('الصندوق مُغلق اليوم ('+v2DamascusToday()+'). ما في حركة جديدة بعد التسوية؛ الرصيد محفوظ.',true);return}
  var value=prompt('أدخل الحركة: رقم موجب للإيداع أو الرصيد الافتتاحي، وسالب للسحب أو التصحيح');
  if(value===null)return;
  var reason=prompt('النوع: opening / deposit / withdrawal / expense / correction','correction');
@@ -179,7 +200,7 @@ async function v2Movement(accountId){
 }
 async function v2Close(accountId){
  if(!v2CanManage())return;
- var d=(new Date()).toLocaleDateString('en-CA',{timeZone:'Asia/Damascus'});
+ var d=v2DamascusToday();
  var date=prompt('تاريخ التسوية بتوقيت دمشق (YYYY-MM-DD)',d);if(date===null)return;
  var amount=prompt('المبلغ الفعلي الموجود في الصندوق / المحفظة');if(amount===null)return;
  var note=prompt('ملاحظة التسوية (اختياري)','');if(note===null)return;
@@ -235,10 +256,14 @@ async function v2DisableStaff(){
  try{v2Online();if(V2.role!=='owner')throw Error('المالك فقط يمكنه تعطيل الموظف');
   var email=q('v2StaffEmail').value.trim();
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw Error('أدخل بريد الموظف لتعطيله');
-  if(!confirm('هل بدك تعطّل صلاحيات هالموظف فوراً؟'))return;
-  await api('rpc/ledger_disable_staff',{method:'POST',body:{p_email:email}});
+  if(!confirm('هل بدك تعطّل صلاحيات هالموظف فوراً؟')){v2Warn('أُلغيت عملية التعطيل ولم تتغير صلاحيات الموظف.',true);return}
+  var result=await api('rpc/ledger_disable_staff',{method:'POST',body:{p_email:email}});
   q('v2StaffEmail').value='';
-  v2Warn('تم تعطيل عضوية الموظف. لازم يسجّل خروج من الجلسات المفتوحة.',false);
+  // Display the confirmed result immediately, without waiting for an unrelated background refresh.
+  if(typeof window.qaRefreshStaffStatus==='function')window.qaRefreshStaffStatus();
+  await v2Load(true);
+  v2Warn(result.already_disabled?'الموظف معطّل من قبل؛ ما عنده أي وصول لبيانات المنشأة.':'تم تعطيل الموظف وسحب صلاحياته على المنشأة. جرّب تبديل الدور للمشاهد للتأكد.',false);
+  if(typeof window.qaRefreshStaffStatus==='function')window.qaRefreshStaffStatus();
  }catch(e){v2Warn(v2Error(e),true)}
 }
 async function v2AssignStaff(){

@@ -10,7 +10,7 @@
     manager:{id:'90000000-0000-4000-8000-000000000009',email:'manager@cashier.invalid',label:'مدير'}
   };
   const activeRole=sessionStorage.getItem('cashier_mobile_qa_role')||'owner';
-  const key='cashier_mobile_qa_synthetic_v1';
+  const key='cashier_mobile_offline_qa_synthetic_v1';
   const apiRoot='https://cashier-preview.invalid';
   function id(){return crypto.randomUUID()}
   function now(){return new Date().toISOString()}
@@ -46,15 +46,17 @@
   save();
   const selected=activeRole==='owner'?{id:owner,email:'demo@cashier.invalid',label:'مالك'}:(staffUsers[activeRole]||{id:owner,email:'demo@cashier.invalid',label:'مالك'});
   const session={access_token:'qa-only-demo-token',refresh_token:'qa-only-demo-refresh',user:{id:selected.id,email:selected.email}};
-  if(location.pathname.endsWith('mobile-test.html')){
+  if(location.pathname.endsWith('mobile-offline-test.html')){
     localStorage.setItem('cs',JSON.stringify(session));
     localStorage.setItem('last',JSON.stringify({id:session.user.id,email:session.user.email}));
     const isOwner=selected.id===owner;
     const locallyCached={user:session.user,customers:isOwner?state.customers:[],journal:isOwner?state.journal:[],
       audit:isOwner?state.audit_events:[],out:[]};
-    localStorage.setItem('cc_'+selected.id,JSON.stringify(locallyCached));
+    // Do not overwrite a pending offline queue when Safari reloads the installed PWA.
+    if(!localStorage.getItem('cc_'+selected.id))localStorage.setItem('cc_'+selected.id,JSON.stringify(locallyCached));
   }
   window.CASHIER_MOBILE_DEMO=true;
+  window.CASHIER_OFFLINE_QA_ONLY=true;
   window.cashierQaRole=()=>activeRole;
   window.qaRefreshStaffStatus=()=>{
     const el=document.getElementById('qa-staff-status');
