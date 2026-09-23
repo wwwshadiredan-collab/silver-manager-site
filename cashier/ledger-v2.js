@@ -6,7 +6,7 @@ function v2Esc(value){return String(value==null?'':value).replace(/[&<>"']/g,fun
 function v2Fmt(n,c){return Number(n||0).toLocaleString('ar-SY',{maximumFractionDigits:c==='SYP'?2:6})+' '+(c==='SYP'?'ل.س':c)}
 function v2Date(s){return s?new Date(s).toLocaleString('ar-SY'):'—'}
 function v2Warn(text,negative){var el=q('v2Message');if(el){el.textContent=text||'';el.style.color=negative?'#ff9cab':'#39d98a'}}
-function v2Error(e){var str=String(e&&e.message||e||'تعذر تنفيذ الطلب');try{var j=JSON.parse(str);return String(j.message||j.error||str)}catch(x){return str.slice(0,300)}}
+function v2Error(e){var str=String(e&&e.message||e||'تعذر تنفيذ الطلب');try{var j=JSON.parse(str);str=String(j.message||j.error||str)}catch(x){}if(str.includes('CASH_ACCOUNT_ALREADY_CLOSED_TODAY'))return 'الصندوق مُغلق اليوم. لا يمكن إضافة حركة بعد التسوية. لم يتغير الرصيد.';if(str.includes('DAY_ALREADY_CLOSED'))return 'هذا الصندوق تمت تسويته مسبقاً بنفس التاريخ. لم تتغير التسوية السابقة.';return str.slice(0,300)}
 function v2Online(){if(!navigator.onLine||!S||!S.access_token)throw Error('الدفعات والصندوق يحتاجوا اتصال إنترنت وجلسة دخول فعالة. لم يُخصم أي مبلغ.')}
 function v2CanCash(){return V2.role==='owner'||V2.role==='manager'||V2.role==='cashier'}
 function v2CanManage(){return V2.role==='owner'||V2.role==='manager'}
