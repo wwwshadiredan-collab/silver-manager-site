@@ -72,7 +72,13 @@
     if(banner)banner.textContent='الدور التجريبي الحالي: '+selected.label;
     if(selected.id!==owner){
       document.querySelectorAll('aside .nav:not([data-v="ledgerV2"]), nav.bottom button[data-v]:not([data-v="ledgerV2"]), .fab').forEach(el=>el.classList.add('hide'));
-      document.querySelector('#qa-owner-only-note')?.classList.remove('hide');
+      const note=document.querySelector('#qa-owner-only-note');
+      if(note){
+        const member=state.ledger_staff_members.find(x=>x.user_id===selected.id);
+        if(member&&!member.active)
+          note.textContent='🔒 هذا الموظف معطّل: لا يستطيع مشاهدة صندوق المنشأة أو تسجيل أي دفعة حتى يعيد المالك تفعيل صلاحيته.';
+        note.classList.remove('hide');
+      }
     }
   });
   function response(obj,status=200){return new Response(status===204?'':JSON.stringify(obj),{status,headers:{'Content-Type':'application/json'}})}
