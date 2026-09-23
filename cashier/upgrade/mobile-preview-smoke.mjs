@@ -50,7 +50,13 @@ try{
  await page.selectOption('#v2Legs .v2-leg:nth-child(3) select','60000000-0000-4000-8000-000000000006');
  await page.fill('#v2Legs .v2-leg:nth-child(3) input','10');
  await page.locator('#v2PrepareBtn').click();
- await page.waitForFunction(()=>document.querySelector('#v2Pending')?.textContent?.includes('بانتظار التأكيد'));
+ await page.waitForTimeout(600);
+ const prepareDebug=await page.evaluate(()=>({message:document.querySelector('#v2Message')?.textContent,
+   pending:document.querySelector('#v2Pending')?.textContent,
+   demoPayments:JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')||'{}').ledger_payments,
+   uiPayments:V2.payments, loading:V2.loading, pageErrors:window.__qaErrors||[]}));
+ console.log('DEBUG_PREPARE',JSON.stringify(prepareDebug));
+ await page.waitForFunction(()=>document.querySelector('#v2Pending')?.textContent?.includes('بانتظار التأكيد'),null,{timeout:5000});
  const staged=await page.evaluate(()=>JSON.parse(localStorage.getItem('cashier_mobile_qa_synthetic_v1')));
  assert.equal(staged.ledger_payments[0].settled_amount,60);
  assert.equal(staged.ledger_payments[0].state,'pending');
