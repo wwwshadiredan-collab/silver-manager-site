@@ -5,6 +5,12 @@ var V2={userId:null,owner:null,role:'owner',workspaces:[],accounts:[],customers:
 function v2Esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function v2Fmt(n,c){return Number(n||0).toLocaleString('ar-SY',{maximumFractionDigits:c==='SYP'?2:6})+' '+(c==='SYP'?'ل.س':c)}
 function v2Date(s){return s?new Date(s).toLocaleString('ar-SY'):'—'}
+function v2DamascusToday(){
+ var parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Damascus',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ var part=function(name){return parts.find(function(x){return x.type===name}).value};
+ return part('year')+'-'+part('month')+'-'+part('day');
+}
+function v2ClosedToday(accountId){return V2.closings.some(function(c){return c.account_id===accountId&&c.local_day===v2DamascusToday()})}
 function v2Warn(text,negative){var el=q('v2Message');if(el){el.textContent=text||'';el.style.color=negative?'#ff9cab':'#39d98a'}}
 function v2Error(e){var str=String(e&&e.message||e||'تعذر تنفيذ الطلب');try{var j=JSON.parse(str);str=String(j.message||j.error||str)}catch(x){}if(str.includes('CASH_ACCOUNT_ALREADY_CLOSED_TODAY'))return 'الصندوق مُغلق اليوم. لا يمكن إضافة حركة بعد التسوية. لم يتغير الرصيد.';if(str.includes('DAY_ALREADY_CLOSED'))return 'هذا الصندوق تمت تسويته مسبقاً بنفس التاريخ. لم تتغير التسوية السابقة.';return str.slice(0,300)}
 function v2Online(){if(!navigator.onLine||!S||!S.access_token)throw Error('الدفعات والصندوق يحتاجوا اتصال إنترنت وجلسة دخول فعالة. لم يُخصم أي مبلغ.')}
@@ -70,7 +76,9 @@ function v2Render(){
  var accounts=V2.accounts;
  q('v2Accounts').innerHTML=accounts.map(function(a){
   var b=V2.balances.find(function(x){return x.account_id===a.id});
+  var closed=v2ClosedToday(a.id);
   return '<div class="v2-item"><b>'+v2Esc(a.label)+'</b> <span class="v2-flag">'+v2Esc(a.channel)+' · '+v2Esc(a.currency)+'</span><div class="small muted">رصيد محسوب من العمليات المؤكدة والحركات اليدوية</div><div class="amt">'+v2Fmt(b?b.expected:0,a.currency)+'</div>'+
+   (closed?'<div class="v2-amber" role="status">🔒 مغلق اليوم ('+v2DamascusToday()+') — يمنع إضافة حركات جديدة.</div>':'')+
    (v2CanManage()?'<div class="v2-inline-actions"><button class="btn sec" onclick="v2Movement(\''+a.id+'\')">حركة صندوق</button><button class="btn sec" onclick="v2Close(\''+a.id+'\')">تسوية اليوم</button></div>':'')+'</div>'
  }).join('')||'<div class="empty">أضف صندوق نقد أو محفظة لتسجيل الدفعات.</div>';
  q('v2Customer').innerHTML='<option value="">اختر الزبون</option>'+V2.customers.map(function(c){return '<option value="'+v2Esc(c.id)+'">'+v2Esc(c.name)+'</option>'}).join('');
@@ -166,6 +174,7 @@ async function v2CreateAccount(){
 }
 async function v2Movement(accountId){
  if(!v2CanManage())return;
+ if(v2ClosedToday(accountId)){v2Warn('الصندوق مُغلق اليوم ('+v2DamascusToday()+'). ما في حركة جديدة بعد التسوية؛ الرصيد محفوظ.',true);return}
  var value=prompt('أدخل الحركة: رقم موجب للإيداع أو الرصيد الافتتاحي، وسالب للسحب أو التصحيح');
  if(value===null)return;
  var reason=prompt('النوع: opening / deposit / withdrawal / expense / correction','correction');
@@ -179,7 +188,7 @@ async function v2Movement(accountId){
 }
 async function v2Close(accountId){
  if(!v2CanManage())return;
- var d=(new Date()).toLocaleDateString('en-CA',{timeZone:'Asia/Damascus'});
+ var d=v2DamascusToday();
  var date=prompt('تاريخ التسوية بتوقيت دمشق (YYYY-MM-DD)',d);if(date===null)return;
  var amount=prompt('المبلغ الفعلي الموجود في الصندوق / المحفظة');if(amount===null)return;
  var note=prompt('ملاحظة التسوية (اختياري)','');if(note===null)return;
