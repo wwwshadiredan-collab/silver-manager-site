@@ -42,6 +42,28 @@
   window.resetCashierMobileDemo=function(){localStorage.removeItem(key);localStorage.removeItem('cc_'+owner);location.reload()};
   function response(obj,status=200){return new Response(status===204?'':JSON.stringify(obj),{status,headers:{'Content-Type':'application/json'}})}
   function money(x,c){return +(Math.round((x+Number.EPSILON)*100)/100).toFixed(2)}
+  // The real ledger's daily lock is tied to the Damascus calendar day, not the device timezone.
+  function damascusDay(value){
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Damascus',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(value));
+    const part=type=>parts.find(p=>p.type===type).value;
+    return part('year')+'-'+part('month')+'-'+part('day');
+  }
+  function closedToday(accountId){
+    const today=damascusDay(now());
+    return state.ledger_day_closings.some(x=>x.owner_id===owner&&x.account_id===accountId&&x.local_day===today);
+  }
+  // Keep invalid synthetic records from the earlier mock visible instead of silently deleting history.
+  window.addEventListener('DOMContentLoaded',()=>{
+    const bad=state.ledger_cash_movements.filter(m=>state.ledger_day_closings.some(c=>
+      c.account_id===m.account_id&&c.local_day===damascusDay(m.created_at)&&
+      new Date(m.created_at)>new Date(c.closed_at)));
+    if(bad.length&&document.querySelector('#qa-mobile-banner')){
+      const warning=document.createElement('div');warning.setAttribute('role','alert');
+      warning.style.cssText='background:#78350f;color:white;padding:12px;font:700 14px system-ui;text-align:center';
+      warning.textContent='تنبيه: '+bad.length+' حركة اختبار قديمة انضافت بعد الإغلاق قبل إصلاح المحاكاة. لم نحذفها. اضغط «تصفير التجربة» لتعيد الاختبار من البداية.';
+      document.querySelector('#qa-mobile-banner').after(warning);
+    }
+  });
   function balances(){
     return state.accounts.map(a=>{
        const paymentSum=state.ledger_payment_parts.filter(p=>p.account_id===a.id).reduce((sum,p)=>{
@@ -126,6 +148,8 @@
        if(p.state!=='pending')return response({message:'PAYMENT_NOT_PENDING'},400);
        const debt=state.journal.filter(j=>j.subject_id===p.customer_id&&j.currency===p.debt_currency).reduce((s,j)=>s+j.delta,0);
        if(p.settled_amount>debt)return response({message:'PAYMENT_EXCEEDS_DEBT'},400);
+       if(state.ledger_payment_parts.some(leg=>leg.payment_id===p.id&&closedToday(leg.account_id)))
+         return response({message:'CASH_ACCOUNT_ALREADY_CLOSED_TODAY'},409);
        const journalId=id();
        state.journal.push({id:journalId,owner_id:owner,subject_id:p.customer_id,category:'receipt',currency:p.debt_currency,
          value:p.settled_amount,secondary_value:0,delta:-p.settled_amount,
@@ -140,8 +164,12 @@
      }
      if(pathname==='/rest/v1/rpc/ledger_cash_balances')return response(balances());
      if(pathname==='/rest/v1/rpc/ledger_close_day'){
-       const a=state.accounts.find(x=>x.id===req.p_account);
+       if(!checkOwner(req.p_owner))return response({message:'NOT_ALLOWED'},403);
+       const a=state.accounts.find(x=>x.id===req.p_account&&x.owner_id===req.p_owner);
        if(!a)return response({message:'ACCOUNT_NOT_FOUND'},400);
+       if(!(Number(req.p_counted)>=0)||!Number.isFinite(Number(req.p_counted))||
+         !/^\d{4}-\d{2}-\d{2}$/.test(String(req.p_day))||req.p_day>damascusDay(now()))
+         return response({message:'INVALID_CLOSING'},400);
        if(state.ledger_day_closings.some(x=>x.account_id===a.id&&x.local_day===req.p_day))
          return response({message:'DAY_ALREADY_CLOSED'},409);
        const expected=balances().find(x=>x.account_id===a.id).expected;
@@ -151,13 +179,25 @@
        return response({id:close.id,expected,counted:close.counted_balance,difference:close.difference})
      }
      if(pathname==='/rest/v1/rpc/ledger_add_cash_movement'){
-       const movement={id:id(),owner_id:owner,account_id:req.p_account,amount:Number(req.p_amount),
+       if(!checkOwner(req.p_owner))return response({message:'NOT_ALLOWED'},403);
+       if(!state.accounts.some(a=>a.id===req.p_account&&a.owner_id===owner&&a.active))
+         return response({message:'CASH_ACCOUNT_NOT_FOUND'},403);
+       const amount=Number(req.p_amount);
+       if(!Number.isFinite(amount)||!amount||Math.abs(amount)>1e14||
+         !['opening','deposit','withdrawal','expense','correction'].includes(req.p_reason)||
+         String(req.p_note||'').trim().length<3)
+         return response({message:'INVALID_MOVEMENT'},400);
+       if(closedToday(req.p_account))
+         return response({message:'CASH_ACCOUNT_ALREADY_CLOSED_TODAY'},409);
+       const movement={id:id(),owner_id:owner,account_id:req.p_account,amount,
           reason:req.p_reason,note:req.p_note,related_id:req.p_related,created_by:owner,created_at:now()};
        state.ledger_cash_movements.push(movement);save();return response(movement.id)
      }
      if(pathname==='/rest/v1/rpc/ledger_reverse_payment'){
        const p=state.ledger_payments.find(x=>x.id===req.p_payment);
        if(!p||p.state!=='confirmed')return response({message:'PAYMENT_NOT_CONFIRMED'},400);
+       if(state.ledger_payment_parts.some(leg=>leg.payment_id===p.id&&closedToday(leg.account_id)))
+         return response({message:'CASH_ACCOUNT_ALREADY_CLOSED_TODAY'},409);
        const old=state.journal.find(j=>j.id===p.journal_id);
        const reversed={...old,id:id(),category:'receipt_reversal',value:-old.value,delta:-old.delta,
          related_id:old.id,note:'عكس: '+req.p_reason,happened_at:now(),created_at:now()};
